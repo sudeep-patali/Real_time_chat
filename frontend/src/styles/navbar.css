@@ -1,0 +1,180 @@
+/* ═══════════════════════════════════════
+   NAVBAR — WhatsApp Web style
+   Note: WhatsApp Web does NOT have a
+   top navbar spanning the full width.
+   The header lives inside the sidebar
+   (left) and the chat header (right).
+   This navbar is kept for the logo on
+   mobile and acts as a slim top bar.
+═══════════════════════════════════════ */
+
+.navbar {
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-bottom: none;
+  padding: 0;
+  display: none;   /* Hidden on desktop — WhatsApp has no top bar */
+}
+
+/* ── Mobile only: show a slim top bar ── */
+@media (max-width: 768px) {
+  .navbar {
+    display: flex;
+    height: 56px;
+    min-height: 56px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--spacing-md);
+    background-color: var(--color-header-bg);
+    border-bottom: 1px solid var(--color-border);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    overflow: visible;
+  }
+}
+
+.navbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.navbar-logo {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: 1.5px;
+}
+
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Generic icon button */
+.navbar-icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.navbar-icon-btn:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+/* Notification badge */
+.badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--color-error);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 50px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Avatar + name cluster */
+.navbar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: background var(--transition-fast);
+}
+
+.navbar-user:hover {
+  background: var(--color-surface-2);
+}
+
+.navbar-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.navbar-username {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+/* Logout — kept but slim */
+.navbar-logout {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: var(--font-size-xs);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.navbar-logout:hover {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+/* Hamburger — mobile only */
+.hamburger {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 22px;
+  cursor: pointer;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast);
+}
+
+.hamburger:hover {
+  background: var(--color-surface-2);
+}
+
+@media (max-width: 768px) {
+  .hamburger {
+    display: flex;
+  }
+
+  .navbar-username {
+    display: none;
+  }
+
+  .navbar-logout {
+    display: none;   /* on mobile, logout lives in sidebar profile menu (Step 2) */
+  }
+}

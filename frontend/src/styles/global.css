@@ -1,0 +1,203 @@
+/* ── Reset ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Google Font ── */
+@import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;500;600;700&display=swap');
+
+/* ── CSS Variables ── */
+:root {
+  --font-size-base: 15px;
+  --font-size-sm:   13px;
+  --font-size-xs:   11px;
+  --spacing-xs:  4px;
+  --spacing-sm:  8px;
+  --spacing-md:  16px;
+  --spacing-lg:  24px;
+  --spacing-xl:  32px;
+  --border-radius:    8px;
+  --border-radius-lg: 18px;
+  --border-radius-xl: 24px;
+  --transition-fast:  0.15s ease;
+  --transition-base:  0.25s ease;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.12);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.18);
+  --shadow-lg: 0 4px 20px rgba(0,0,0,0.25);
+}
+
+/* ── Dark Theme (default) ── */
+body.dark {
+  /* Primary accent — WhatsApp teal/green */
+  --color-primary:       #00a884;
+  --color-primary-hover: #008f71;
+  --color-primary-light: rgba(0,168,132,0.15);
+
+  /* Backgrounds */
+  --color-bg:        #111b21;   /* main app bg — deep navy */
+  --color-surface:   #202c33;   /* sidebar & panels */
+  --color-surface-2: #2a3942;   /* hover states, elevated panels */
+  --color-surface-3: #182229;   /* chat area bg */
+
+  /* Bubble colors */
+  --color-bubble-out:    #005c4b;   /* sent messages */
+  --color-bubble-in:     #202c33;   /* received messages */
+  --color-bubble-out-hover: #006655;
+  --color-bubble-in-hover:  #2a3942;
+
+  /* Text */
+  --color-text:       #e9edef;
+  --color-text-muted: #8696a0;
+  --color-text-dim:   #667781;
+
+  /* UI chrome */
+  --color-border:     #2a3942;
+  --color-divider:    #222d34;
+  --color-online:     #00a884;
+  --color-error:      #f15c6d;
+  --color-success:    #00a884;
+  --color-unread-bg:  #00a884;
+  --color-unread-text:#111b21;
+
+  /* Input */
+  --color-input-bg:   #2a3942;
+  --color-input-border: transparent;
+
+  /* Search */
+  --color-search-bg:  #111b21;
+
+  /* Header */
+  --color-header-bg:  #202c33;
+
+  /* Active conversation highlight */
+  --color-active-bg:  #2a3942;
+  --color-active-border: #00a884;
+}
+
+/* ── Light Theme ── */
+body.light {
+  /* Primary accent */
+  --color-primary:       #00a884;
+  --color-primary-hover: #008f71;
+  --color-primary-light: rgba(0,168,132,0.12);
+
+  /* Backgrounds */
+  --color-bg:        #f0f2f5;
+  --color-surface:   #ffffff;
+  --color-surface-2: #f5f6f6;
+  --color-surface-3: #efeae2;   /* classic WhatsApp chat bg */
+
+  /* Bubble colors */
+  --color-bubble-out:    #d9fdd3;  /* sent — soft green */
+  --color-bubble-in:     #ffffff;  /* received — white */
+  --color-bubble-out-hover: #c8f9bf;
+  --color-bubble-in-hover:  #f7f7f7;
+
+  /* Text */
+  --color-text:       #111b21;
+  --color-text-muted: #667781;
+  --color-text-dim:   #8696a0;
+
+  /* UI chrome */
+  --color-border:     #e9edef;
+  --color-divider:    #e9edef;
+  --color-online:     #00a884;
+  --color-error:      #e53935;
+  --color-success:    #00a884;
+  --color-unread-bg:  #00a884;
+  --color-unread-text:#ffffff;
+
+  /* Input */
+  --color-input-bg:   #ffffff;
+  --color-input-border: transparent;
+
+  /* Search */
+  --color-search-bg:  #f0f2f5;
+
+  /* Header */
+  --color-header-bg:  #f0f2f5;
+
+  /* Active conversation highlight */
+  --color-active-bg:  #f0f2f5;
+  --color-active-border: #00a884;
+}
+
+/* ── Base ── */
+html, body {
+  height: 100%;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-size: var(--font-size-base);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  height: 100%;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-dim);
+}
+
+/* ── Utility ── */
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  background: none;
+}
+
+input, textarea {
+  font-family: inherit;
+  outline: none;
+  border: none;
+}
+
+/* ── Responsive base ── */
+@media (max-width: 480px) {
+  :root {
+    --font-size-base: 14px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+  }
+}
+
+/* ── Utility Classes ── */
+.hide-mobile  { display: block; }
+.show-mobile  { display: none;  }
+
+@media (max-width: 768px) {
+  .hide-mobile { display: none  !important; }
+  .show-mobile { display: block !important; }
+}
+
+/* ── Selection color ── */
+::selection {
+  background: var(--color-primary-light);
+  color: var(--color-text);
+}
