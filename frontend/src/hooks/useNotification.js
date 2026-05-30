@@ -4,6 +4,8 @@ export function useNotification() {
   const unreadCounts        = useNotificationStore(state => state.unreadCounts)
   const alerts              = useNotificationStore(state => state.alerts)
   const notifications       = useNotificationStore(state => state.notifications)
+  const addNotification =
+  useNotificationStore(state => state.addNotification)
   const markAllRead         = useNotificationStore(state => state.markAllRead)
   const markNotificationRead = useNotificationStore(state => state.markNotificationRead)
 
@@ -20,5 +22,6 @@ export function useNotification() {
     unreadNotifications,
     markAllRead,
     markNotificationRead,
+    addNotification
   }
 }

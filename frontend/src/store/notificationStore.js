@@ -77,6 +77,13 @@ export const useNotificationStore = create((set) => ({
         n.id === id ? { ...n, read: true } : n
       ),
     })),
+    addNotification: (notification) =>
+  set((state) => ({
+    notifications: [
+      notification,
+      ...state.notifications
+    ]
+  })),
 
   addAlert: ({ message, type = 'info' }) =>
     set((state) => ({

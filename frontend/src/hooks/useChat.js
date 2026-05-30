@@ -10,7 +10,9 @@ import {
   USER_ONLINE,
   JOIN_ROOM,
   LEAVE_ROOM,
-  SEND_MESSAGE
+  SEND_MESSAGE,
+  MESSAGE_READ,
+  MESSAGE_DELIVERED
 } from '../socket/socketEvents'
 
 export function useChat(roomId) {
@@ -57,12 +59,40 @@ export function useChat(roomId) {
       updateUserOnline(userId, isOnline)
     }
 
+    const handleMessageRead = ({ roomId, userId }) => {
+  console.log('Message Read:', roomId, userId)
+}
+
+const handleMessageDelivered = ({ roomId, messageId }) => {
+  console.log('Message Delivered:', roomId, messageId)
+}
+
+    on(MESSAGE_READ, handleMessageRead)
+on(MESSAGE_DELIVERED, handleMessageDelivered)
+
     on(RECEIVE_MESSAGE, handleReceiveMessage)
     on(USER_TYPING, handleUserTyping)
     on(USER_STOP_TYPING, ({ userId }) => setTyping(userId, false))
     on(USER_ONLINE, handleUserOnline)
+    
+
+    console.log('Testing MESSAGE_READ event');
+
+emit(MESSAGE_READ, {
+  roomId: 'test-room'
+});
+
+console.log('Testing MESSAGE_DELIVERED event');
+
+emit(MESSAGE_DELIVERED, {
+  roomId: 'test-room',
+  messageId: 'msg-123'
+});
+
 
     return () => {
+      off(MESSAGE_READ, handleMessageRead)
+off(MESSAGE_DELIVERED, handleMessageDelivered)
       off(RECEIVE_MESSAGE, handleReceiveMessage)
       off(USER_TYPING, handleUserTyping)
       off(USER_ONLINE, handleUserOnline)

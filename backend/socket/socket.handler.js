@@ -42,6 +42,52 @@ module.exports = (io) => {
       });
     });
 
+    socket.on('message_read', ({ roomId } = {}) => {
+       console.log('MESSAGE_READ EVENT RECEIVED:', roomId);
+  if (!roomId) return;
+
+  socket.to(roomId).emit(
+    'message_read',
+    {
+      roomId,
+      userId: socket.user._id
+    }
+  );
+
+});
+
+socket.on('message_delivered', ({ roomId, messageId } = {}) => {
+
+  console.log(
+    'MESSAGE_DELIVERED EVENT RECEIVED:',
+    roomId,
+    messageId
+  );
+
+  if (!roomId || !messageId) return;
+
+  socket.to(roomId).emit(
+    'message_delivered',
+    {
+      roomId,
+      messageId
+    }
+  );
+
+});
+
+socket.on('send_notification', (data = {}) => {
+  console.log('SEND_NOTIFICATION EVENT RECEIVED:', data);
+  const { receiverId } = data;
+
+  if (!receiverId) return;
+
+  io.emit(
+    'receive_notification',
+    data
+  );
+
+});
     socket.on('disconnect', async () => {
       await User.findByIdAndUpdate(socket.user?._id, {
         isOnline: false, lastSeen: new Date()
