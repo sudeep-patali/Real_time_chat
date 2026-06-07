@@ -17,6 +17,8 @@ export function useAuth() {
     try {
       const res = await authService.login(email, password)
       authStore.login(res.data.user, res.data.token)
+      // Notify contexts to reload per-user preferences
+      window.dispatchEvent(new CustomEvent('auth:user-changed'))
       navigate('/')
     } catch (err) {
       setError(
@@ -33,6 +35,8 @@ export function useAuth() {
     try {
       const res = await authService.signup(name, email, password)
       authStore.login(res.data.user, res.data.token)
+      // Notify contexts to reload per-user preferences
+      window.dispatchEvent(new CustomEvent('auth:user-changed'))
       navigate('/')
     } catch (err) {
       setError(
@@ -50,6 +54,8 @@ export function useAuth() {
       // ignore logout errors
     } finally {
       authStore.logout()
+      // Notify contexts to reset to defaults (no user)
+      window.dispatchEvent(new CustomEvent('auth:user-changed'))
       navigate('/login')
     }
   }

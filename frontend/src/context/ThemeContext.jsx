@@ -2,10 +2,23 @@ import { createContext, useContext, useState, useEffect } from 'react'
 
 const ThemeContext = createContext(null)
 
+// ── Per-user storage helpers ──────────────────────────────────────────────
+function getUserId() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user'))
+    return user?.id || user?._id || null
+  } catch { return null }
+}
+
+function getUserThemeKey() {
+  const uid = getUserId()
+  return uid ? `theme_${uid}` : 'theme'
+}
+
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(
-    localStorage.getItem('theme') || 'dark'
-  )
+  const [theme, setThemeState] = useState(() => {
+    return localStorage.getItem(getUserThemeKey()) || 'dark'
+  })
 
   const applyTheme = (t) => {
     if (t === 'system') {
@@ -18,7 +31,7 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     applyTheme(theme)
-    localStorage.setItem('theme', theme)
+    localStorage.setItem(getUserThemeKey(), theme)
   }, [theme])
 
   // Listen for system preference changes when theme=system
@@ -36,13 +49,26 @@ export function ThemeProvider({ children }) {
     setThemeState(prev => prev === 'dark' ? 'light' : 'dark')
   }
 
-  // Expose the actual applied class (dark/light) even when system
+  // Re-read from per-user key when user changes (e.g. after login)
+  const rehydrate = () => {
+    const saved = localStorage.getItem(getUserThemeKey()) || 'dark'
+    setThemeState(saved)
+    applyTheme(saved)
+  }
+
+  // Re-read per-user theme whenever auth state changes (login / logout / switch)
+  useEffect(() => {
+    const handler = () => rehydrate()
+    window.addEventListener('auth:user-changed', handler)
+    return () => window.removeEventListener('auth:user-changed', handler)
+  }, [])
+
   const effectiveTheme = theme === 'system'
     ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
     : theme
 
   return (
-    <ThemeContext.Provider value={{ theme, effectiveTheme, toggleTheme, setTheme }}>
+    <ThemeContext.Provider value={{ theme, effectiveTheme, toggleTheme, setTheme, rehydrate }}>
       {children}
     </ThemeContext.Provider>
   )

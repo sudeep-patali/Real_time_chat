@@ -13,13 +13,61 @@
   align-items: flex-start;
 }
 
-/* ── Left Sidebar ── */
-.settings-nav {
+/* ── Left Sidebar Wrapper (contains back btn + nav) ── */
+.settings-sidebar {
   width: 240px;
   flex-shrink: 0;
   position: sticky;
   top: 80px;
   height: fit-content;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Back Button ── */
+.settings-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  width: 100%;
+  text-align: left;
+}
+
+.settings-back-btn:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border-color: var(--color-primary);
+}
+
+.settings-back-btn:active {
+  opacity: 0.8;
+}
+
+.settings-back-btn svg {
+  flex-shrink: 0;
+  opacity: 0.75;
+  transition: transform var(--transition-fast);
+}
+
+.settings-back-btn:hover svg {
+  opacity: 1;
+  transform: translateX(-2px);
+}
+
+/* ── Left Sidebar Nav ── */
+.settings-nav {
+  width: 100%;
+  flex-shrink: 0;
 }
 
 .settings-nav-card {
@@ -624,6 +672,16 @@
     flex-direction: column;
     padding: 12px;
     gap: 12px;
+  }
+
+  .settings-sidebar {
+    width: 100%;
+    position: static;
+  }
+
+  .settings-back-btn {
+    border-radius: 10px;
+    padding: 9px 12px;
   }
 
   .settings-nav {
