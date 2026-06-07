@@ -66,7 +66,7 @@ app.get('/uploads/:filename', (req, res) => {
   // Determine content-type from extension
   const ext = path.extname(filePath).toLowerCase()
   const mimeMap = {
-    '.webm': 'audio/webm;codecs=opus',
+    '.webm': 'audio/webm',
     '.ogg':  'audio/ogg;codecs=opus',
     '.mp3':  'audio/mpeg',
     '.mp4':  'video/mp4',

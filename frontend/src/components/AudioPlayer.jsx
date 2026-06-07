@@ -8,9 +8,20 @@ const fmt = (secs) => {
 }
 
 /**
- * Custom audio player that correctly shows duration before playback.
- * Uses a real <audio> element (not new Audio()) so the browser can
- * stream range requests and report duration on loadedmetadata.
+ * Custom audio player.
+ *
+ * FIX: Remove crossOrigin="anonymous".
+ * The /uploads route is public (no auth required). Adding crossOrigin="anonymous"
+ * forces a CORS request with an Origin header. If the browser has any cached
+ * non-CORS response for the same URL (e.g. from a previous fetch), it will
+ * treat the cached opaque response as a CORS failure and refuse to play.
+ * Since no credentials are needed to fetch audio files, removing this attribute
+ * lets the browser fetch normally without CORS constraints, which is both
+ * simpler and more reliable.
+ *
+ * FIX: Use src attribute directly on <audio> (not <source> children).
+ * Direct src attribute + audio.load() reload path works correctly.
+ * <source> children don't reliably re-resolve after attribute changes.
  */
 function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
   const [playing,     setPlaying]     = useState(false)
@@ -22,7 +33,6 @@ function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
   useEffect(() => {
     setPlaying(false)
     setCurrentTime(0)
-    // Keep totalDuration hint until real duration loads
     setDuration(totalDuration || 0)
   }, [src])
 
@@ -59,10 +69,6 @@ function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
       audio.pause()
       setPlaying(false)
     } else {
-      // Reload if audio errored (e.g. after crossOrigin retry)
-      if (audio.error) {
-        audio.load()
-      }
       audio.play()
         .then(() => setPlaying(true))
         .catch((err) => {
@@ -84,28 +90,20 @@ function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
 
   return (
     <div style={styles.wrap}>
-      {/* Real <audio> element — gives browser range-request support + correct duration */}
+      {/*
+        No crossOrigin attribute — audio files are public, no CORS auth needed.
+        Direct src on <audio> for reliable loading and reload.
+      */}
       <audio
         ref={audioRef}
+        src={src}
         preload="metadata"
-        crossOrigin="anonymous"
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
-        onError={(e) => {
-          const audio = e.currentTarget
-          if (audio.crossOrigin === 'anonymous') {
-            audio.crossOrigin = null
-            audio.load()
-          }
-        }}
+        onError={(e) => console.error('Audio error:', e.currentTarget.error?.message, 'src:', e.currentTarget.src)}
         style={{ display: 'none' }}
-      >
-        {/* Provide codec hint so browser can decode webm/opus correctly */}
-        <source src={src} type={mimeType || 'audio/webm;codecs=opus'} />
-        <source src={src} type="audio/webm" />
-        <source src={src} type="audio/ogg" />
-      </audio>
+      />
 
       <button style={styles.btn} onClick={togglePlay} title={playing ? 'Pause' : 'Play'}>
         {playing ? <PauseIcon /> : <PlayIcon />}
