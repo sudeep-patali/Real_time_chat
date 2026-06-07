@@ -23,6 +23,8 @@ const userSchema = new mongoose.Schema({
     onlineStatus:  { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
     addToGroups:   { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
     messages:      { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+    readReceipts:    { type: Boolean, default: true },
+    typingIndicator: { type: Boolean, default: true },
   },
 
   // Statistics counters
@@ -30,6 +32,43 @@ const userSchema = new mongoose.Schema({
     messagesSent: { type: Number, default: 0 },
     filesShared:  { type: Number, default: 0 },
     mediaShared:  { type: Number, default: 0 },
+  },
+
+
+  // Full settings object
+  settings: {
+    notifications: {
+      enabled:        { type: Boolean, default: true },
+      sound:          { type: Boolean, default: true },
+      browser:        { type: Boolean, default: false },
+      groupEnabled:   { type: Boolean, default: true },
+      mentionEnabled: { type: Boolean, default: true },
+      messageSound:   { type: String, default: 'default' },
+      groupSound:     { type: String, default: 'default' },
+    },
+    privacy: {
+      readReceipts:    { type: Boolean, default: true },
+      typingIndicator: { type: Boolean, default: true },
+    },
+    chat: {
+      autoDeleteMessages:  { type: String, default: 'off' },
+      autoDownloadImages:  { type: Boolean, default: true },
+      autoDownloadVideos:  { type: Boolean, default: false },
+      autoDownloadDocs:    { type: Boolean, default: false },
+    },
+    groups: {
+      muteAll:       { type: Boolean, default: false },
+      mentionNotifs: { type: Boolean, default: true },
+    },
+    twoFactor: {
+      enabled: { type: Boolean, default: false },
+      method:  { type: String, enum: ['email', 'authenticator'], default: 'email' },
+    },
+    accessibility: {
+      highContrast:      { type: Boolean, default: false },
+      keyboardShortcuts: { type: Boolean, default: true },
+      screenReader:      { type: Boolean, default: false },
+    }
   },
 
   // Phase 8.3 — User Actions

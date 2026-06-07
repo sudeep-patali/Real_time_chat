@@ -12,3 +12,8 @@ export const muteUser     = (userId)         => api.post(`/users/${userId}/mute`
 export const getBlockedUsers = ()            => api.get('/users/me/blocked');
 export const getUserStats    = ()            => api.get('/users/me/stats');
 export const updatePrivacy   = (settings)    => api.put('/users/me/privacy', settings);
+
+export const updateSettings    = (data)   => api.put('/users/me/settings', data);
+export const deleteAccount     = (pass)   => api.delete('/users/me', { data: { password: pass } });
+export const exportChatHistory = ()       => api.get('/users/me/export', { responseType: 'blob' });
+export const downloadMyData    = ()       => api.get('/users/me/data', { responseType: 'blob' });

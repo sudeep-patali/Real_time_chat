@@ -1,4 +1,21 @@
-const User = require('../models/User');
+const User        = require('../models/User');
+const UserSession = require('../models/UserSession');
+const SecurityLog = require('../models/SecurityLog');
+
+function parseUA(ua = '') {
+  let browser = 'Unknown Browser';
+  let os = 'Unknown OS';
+  if (/Chrome/.test(ua) && !/Chromium|Edge|OPR/.test(ua)) browser = 'Chrome';
+  else if (/Firefox/.test(ua)) browser = 'Firefox';
+  else if (/Safari/.test(ua) && !/Chrome/.test(ua)) browser = 'Safari';
+  else if (/Edge/.test(ua)) browser = 'Edge';
+  if (/Windows/.test(ua)) os = 'Windows';
+  else if (/Macintosh|Mac OS/.test(ua)) os = 'macOS';
+  else if (/Linux/.test(ua)) os = 'Linux';
+  else if (/Android/.test(ua)) os = 'Android';
+  else if (/iPhone|iPad|iPod/.test(ua)) os = 'iOS';
+  return `${browser} on ${os}`;
+}
 const jwt  = require('jsonwebtoken');
 
 const generateToken = (id) =>
@@ -26,6 +43,15 @@ exports.login = async (req, res, next) => {
     if (!user || !(await user.matchPassword(password)))
       return res.status(401).json({ message: 'Invalid email or password' });
     const token = generateToken(user._id);
+
+    // Track session and log
+    try {
+      const ua = req.headers['user-agent'] || '';
+      const ip = req.ip || req.connection?.remoteAddress || '';
+      await UserSession.create({ userId: user._id, token, device: parseUA(ua), ip, userAgent: ua });
+      await SecurityLog.create({ userId: user._id, action: 'login', device: parseUA(ua), ip });
+    } catch (_) { /* non-fatal */ }
+
     res.json({
       user: { id: user._id, name: user.name, email: user.email,
               avatar: user.avatar, role: user.role },

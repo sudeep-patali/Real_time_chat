@@ -201,3 +201,31 @@ input, textarea {
   background: var(--color-primary-light);
   color: var(--color-text);
 }
+/* ── Settings-specific CSS variables ── */
+body.dark, body.light {
+  --color-surface-settings: var(--color-surface);
+  --color-segmented-bg: var(--color-surface-2);
+  --color-segmented-active: var(--color-primary);
+}
+
+/* ── High Contrast ── */
+body.high-contrast {
+  --color-text:       #ffffff;
+  --color-text-muted: #cccccc;
+  --color-border:     #666666;
+}
+
+body.high-contrast * {
+  outline-offset: 2px;
+}
+
+body.high-contrast :focus {
+  outline: 3px solid var(--color-primary) !important;
+}
+
+/* ── Compact Mode ── */
+body.compact {
+  --spacing-sm:  4px;
+  --spacing-md:  10px;
+  --spacing-lg:  16px;
+}
