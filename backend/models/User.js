@@ -7,9 +7,30 @@ const userSchema = new mongoose.Schema({
   password:     { type: String, required: true, minlength: 6 },
   avatar:       { type: String, default: null },
   bio:          { type: String, default: '' },
+  username:     { type: String, default: '', trim: true },
   role:         { type: String, enum: ['admin','member'], default: 'member' },
   isOnline:     { type: Boolean, default: false },
   lastSeen:     { type: Date, default: Date.now },
+
+  // Status
+  statusValue:  { type: String, default: 'available' },
+  customStatus: { type: String, default: '' },
+
+  // Privacy settings
+  privacy: {
+    profilePhoto:  { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+    lastSeen:      { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+    onlineStatus:  { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+    addToGroups:   { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+    messages:      { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+  },
+
+  // Statistics counters
+  stats: {
+    messagesSent: { type: Number, default: 0 },
+    filesShared:  { type: Number, default: 0 },
+    mediaShared:  { type: Number, default: 0 },
+  },
 
   // Phase 8.3 — User Actions
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

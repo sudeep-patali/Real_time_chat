@@ -31,8 +31,8 @@ const io = new Server(server, {
 socketHandler(io)
 
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }))
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // ── Inject socket.io into every request so controllers can emit events ────
 app.use((req, _res, next) => { req.io = io; next() })
