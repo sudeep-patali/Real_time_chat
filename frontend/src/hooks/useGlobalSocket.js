@@ -40,23 +40,20 @@ export function useGlobalSocket() {
   const removeInvitation  = useGroupInviteStore(state => state.removeInvitation)
 
   useEffect(() => {
-    // ── FIX Issue 4: Online status ─────────────────────────────────────────
-    // userId from socket may come as ObjectId or string — always toString().
+    // ── Online status ─────────────────────────────────────────────────────
     const handleUserOnline = ({ userId, isOnline }) => {
       if (!userId) return
       updateUserOnline(userId.toString(), isOnline)
     }
 
-    // ── Incoming messages (sidebar preview + real-time room list) ─────────
-    // Snapshot current rooms/pendingRooms so we can detect unknown rooms.
-    // We read directly from the store (not React state) to avoid stale closure.
+    // ── Incoming messages (sidebar preview) ───────────────────────────────
     const handleReceiveMessage = ({ message }) => {
       if (!message) return
-      const roomId = message.roomId?.toString()
+      const roomId   = message.roomId?.toString()
+      const senderId = (message.senderId?.toString() || message.sender?._id?.toString())
       if (!roomId) return
 
-      // Update the sidebar last-message preview with all fields (type, fileName
-      // needed for friendly labels like "📷 Photo" instead of raw URLs).
+      // Update sidebar preview
       updateLastMessage(roomId, {
         content:   message.content,
         timestamp: message.timestamp || message.createdAt,
@@ -64,34 +61,30 @@ export function useGlobalSocket() {
         fileName:  message.fileName || null,
       })
 
-      // FIX: "sidebar empty before refresh" — if this room is not yet in the
-      // store (new DM, accepted request, etc.), fetch all rooms from the API
-      // so the sidebar updates immediately without needing a manual refresh.
+      // If room not in store yet, reload rooms
       const storeState = useChatStore.getState()
       const allRooms   = [...storeState.rooms, ...storeState.pendingRooms]
       const known      = allRooms.some(r => (r.id || r._id)?.toString() === roomId)
       if (!known) {
-        // Fetch fresh room list and merge into the store
+        const uid = currentUser?.id?.toString()
         roomService.getRooms()
-          .then(res => {
-            const currentUserId = currentUser?.id?.toString()
-            const normalized = (res.data.rooms || []).map(r => normalizeRoomBasic(r, currentUserId))
-            useChatStore.getState().setRooms(normalized)
-          })
+          .then(res => useChatStore.getState().setRooms((res.data.rooms || []).map(r => normalizeRoomBasic(r, uid))))
           .catch(() => {})
         roomService.getRequests()
-          .then(res => {
-            const currentUserId = currentUser?.id?.toString()
-            const normalized = (res.data.requests || []).map(r => normalizeRoomBasic(r, currentUserId))
-            useChatStore.getState().setPendingRooms(normalized)
-          })
+          .then(res => useChatStore.getState().setPendingRooms((res.data.requests || []).map(r => normalizeRoomBasic(r, uid))))
           .catch(() => {})
+      }
+
+      // Unread badge: increment only if not in active room, and not own message
+      if (senderId !== currentUser?.id?.toString()) {
+        const activeStr = storeState.activeRoomId?.toString()
+        if (!activeStr || roomId !== activeStr) {
+          incrementUnread(roomId)
+        }
       }
     }
 
-    // ── Sent message acknowledgement (sidebar preview for SENDER) ───────────
-    // The server confirms the sent message — update sidebar preview with
-    // type/fileName so "📷 Photo" shows instead of the raw URL.
+    // ── Sender sidebar preview ─────────────────────────────────────────────
     const handleMessageSent = ({ message }) => {
       if (!message) return
       const roomId = message.roomId?.toString()
@@ -104,7 +97,7 @@ export function useGlobalSocket() {
       })
     }
 
-    // ── UNREAD_INCREMENT ───────────────────────────────────────────────────
+    // ── UNREAD_INCREMENT (server-driven fallback) ──────────────────────────
     const handleUnreadIncrement = ({ roomId }) => {
       if (!roomId) return
       if (roomId !== activeRoomId?.toString()) {
@@ -112,14 +105,9 @@ export function useGlobalSocket() {
       }
     }
 
-    // ── FIX Issue 3: DM message requests ──────────────────────────────────
-    // When the RECEIVER gets a new message request, add to their pending list.
-    // When the SENDER gets back the same socket event (via broadcast on the room),
-    // we do NOT want to add it as a pending room for them.  Guard with receiverId.
+    // ── DM message requests ────────────────────────────────────────────────
     const handleReceiveRequest = ({ roomId, senderId, senderName, isGroup, groupName, receiverId }) => {
-      // Only process for the actual receiver
       if (receiverId && receiverId?.toString() !== currentUser?.id?.toString()) return
-
       addPendingRoom({
         id:             roomId,
         participantIds: [{ id: senderId?.toString(), _id: senderId?.toString(), name: senderName }],
@@ -135,9 +123,7 @@ export function useGlobalSocket() {
         title:     senderName,
         body:      'Sent you a message request',
         timestamp: new Date().toISOString(),
-        isRead:    false,
-        read:      false,
-        avatar:    null
+        isRead:    false, read: false, avatar: null
       })
     }
 
@@ -154,8 +140,8 @@ export function useGlobalSocket() {
     const handleGroupInvitation = ({ receiverId, invitationId, group, invitedBy, memberCount }) => {
       if (receiverId?.toString() !== currentUser?.id?.toString()) return
       addInvitation({
-        id:       invitationId,
-        group:    { ...group, memberCount: memberCount || 0 },
+        id: invitationId,
+        group: { ...group, memberCount: memberCount || 0 },
         invitedBy,
         createdAt: new Date().toISOString()
       })
@@ -165,13 +151,11 @@ export function useGlobalSocket() {
         title:     invitedBy?.name || 'Someone',
         body:      `invited you to join ${group?.name}`,
         timestamp: new Date().toISOString(),
-        isRead:    false,
-        read:      false,
-        avatar:    invitedBy?.avatar || null
+        isRead:    false, read: false, avatar: invitedBy?.avatar || null
       })
     }
 
-    const handleGroupInvitationAccepted = ({ receiverId, groupId, groupName, acceptedBy }) => {
+    const handleGroupInvitationAccepted = ({ receiverId, groupName, acceptedBy }) => {
       if (receiverId?.toString() !== currentUser?.id?.toString()) return
       addNotification({
         id:        `grp-acc-${Date.now()}`,
@@ -179,15 +163,13 @@ export function useGlobalSocket() {
         title:     groupName || 'Group',
         body:      `${acceptedBy?.name} joined the group`,
         timestamp: new Date().toISOString(),
-        isRead:    false,
-        read:      false,
-        avatar:    null
+        isRead:    false, read: false, avatar: null
       })
     }
 
     const handleGroupInvitationRejected = ({ invitationId, receiverId }) => {
       if (receiverId?.toString() !== currentUser?.id?.toString()) return
-      // No store update needed
+      removeInvitation(invitationId)
     }
 
     const handleUserJoinedGroup = async ({ userId, groupId }) => {
@@ -196,7 +178,7 @@ export function useGlobalSocket() {
         const res  = await groupService.getGroupById(groupId)
         const room = res.data.room || res.data
         if (!room) return
-        const normalised = {
+        addRoom({
           ...room,
           id:             room._id || room.id,
           isGroup:        true,
@@ -204,18 +186,11 @@ export function useGlobalSocket() {
           participantIds: (room.participantIds || []).map(p =>
             typeof p === 'object' ? { ...p, id: p._id || p.id } : p
           ),
-          lastMessage:    room.lastMessage
-            ? {
-                content:    room.lastMessage.content || '',
-                timestamp:  room.lastMessage.createdAt || room.lastMessage.timestamp,
-                senderName: room.lastMessage.senderId?.name || ''
-              }
+          lastMessage: room.lastMessage
+            ? { content: room.lastMessage.content || '', timestamp: room.lastMessage.createdAt || room.lastMessage.timestamp, senderName: room.lastMessage.senderId?.name || '' }
             : null
-        }
-        addRoom(normalised)
-      } catch (err) {
-        console.error('handleUserJoinedGroup fetch error:', err)
-      }
+        })
+      } catch {}
     }
 
     const handleGroupMemberRemoved = ({ groupId, removedUserId }) => {
@@ -223,9 +198,7 @@ export function useGlobalSocket() {
       removeRoom(groupId)
     }
 
-    const handleGroupDeleted = ({ groupId }) => {
-      removeRoom(groupId)
-    }
+    const handleGroupDeleted = ({ groupId }) => { removeRoom(groupId) }
 
     on(USER_ONLINE,                handleUserOnline)
     on(RECEIVE_MESSAGE,            handleReceiveMessage)
@@ -261,8 +234,6 @@ export function useGlobalSocket() {
   }, [currentUser, activeRoomId])
 }
 
-// Minimal room normalizer for real-time sidebar updates.
-// Derives otherUser from participantIds so the sidebar shows names immediately.
 function normalizeRoomBasic(room, currentUserId) {
   const participants = (room.participantIds || []).map(p =>
     typeof p === 'object'

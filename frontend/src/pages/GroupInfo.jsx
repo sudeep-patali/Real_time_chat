@@ -2,18 +2,34 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useChatStore } from '../store/chatStore'
 import { useAuthStore } from '../store/authStore'
-import * as roomService  from '../services/roomService'
-import * as groupService from '../services/groupService'
-import * as userService  from '../services/userService'
+import { useNotificationStore } from '../store/notificationStore'
+import * as roomService   from '../services/roomService'
+import * as groupService  from '../services/groupService'
+import * as userService   from '../services/userService'
+import * as messageService from '../services/messageService'
 import MediaGallery from '../components/MediaGallery'
 import { generateAvatar } from '../utils/generateAvatar'
 import '../styles/chat.css'
 
-// ─── small debounce hook ──────────────────────────────────────────────────────
 function useDebounce(value, delay = 350) {
   const [d, setD] = useState(value)
   useEffect(() => { const t = setTimeout(() => setD(value), delay); return () => clearTimeout(t) }, [value, delay])
   return d
+}
+
+// ── Stat card ─────────────────────────────────────────────────────────────
+function StatCard({ icon, label, value }) {
+  return (
+    <div style={{
+      flex: 1, backgroundColor: 'var(--color-surface-2)', borderRadius: 10,
+      border: '1px solid var(--color-border)', padding: '12px 8px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+    }}>
+      <span style={{ fontSize: 20 }}>{icon}</span>
+      <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-primary)' }}>{value}</span>
+      <span style={{ fontSize: 10, color: 'var(--color-text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>{label}</span>
+    </div>
+  )
 }
 
 export default function GroupInfo() {
@@ -24,37 +40,39 @@ export default function GroupInfo() {
   const removeRoom     = useChatStore(state => state.removeRoom)
   const updateRoom     = useChatStore(state => state.updateRoom)
   const toggleMuteRoom = useChatStore(state => state.toggleMuteRoom)
+  const clearUnread    = useNotificationStore(state => state.clearUnread)
   const currentUser    = useAuthStore(state => state.currentUser)
 
-  const [group,        setGroup]        = useState(null)
-  const [media,        setMedia]        = useState([])
-  const [docs,         setDocs]         = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [error,        setError]        = useState(null)
-  const [busy,         setBusy]         = useState('')
+  const [group,         setGroup]         = useState(null)
+  const [media,         setMedia]         = useState([])
+  const [docs,          setDocs]          = useState([])
+  const [totalMsgs,     setTotalMsgs]     = useState(null)
+  const [loading,       setLoading]       = useState(true)
+  const [error,         setError]         = useState(null)
+  const [busy,          setBusy]          = useState('')
+  const [activeTab,     setActiveTab]     = useState('info') // 'info' | 'members' | 'media'
 
   // Edit mode
-  const [editMode,     setEditMode]     = useState(false)
-  const [editName,     setEditName]     = useState('')
-  const [editDesc,     setEditDesc]     = useState('')
-  const [editAvatar,   setEditAvatar]   = useState(null)
-  const [editPreview,  setEditPreview]  = useState(null)
-  const [editBusy,     setEditBusy]     = useState(false)
+  const [editMode,    setEditMode]    = useState(false)
+  const [editName,    setEditName]    = useState('')
+  const [editDesc,    setEditDesc]    = useState('')
+  const [editAvatar,  setEditAvatar]  = useState(null)
+  const [editPreview, setEditPreview] = useState(null)
+  const [editBusy,    setEditBusy]    = useState(false)
 
   // Invite panel
-  const [showInvite,   setShowInvite]   = useState(false)
-  const [inviteSearch, setInviteSearch] = useState('')
-  const [inviteResults,setInviteResults]= useState([])
-  const [inviteSearch_,]= [useDebounce(inviteSearch)]
+  const [showInvite,    setShowInvite]    = useState(false)
+  const [inviteSearch,  setInviteSearch]  = useState('')
+  const [inviteResults, setInviteResults] = useState([])
   const debouncedInvite = useDebounce(inviteSearch)
-  const [selectedInvite,setSelectedInvite] = useState([])
-  const [inviting,     setInviting]     = useState(false)
-  const [pendingInvites,setPendingInvites]= useState([])
+  const [selectedInvite, setSelectedInvite] = useState([])
+  const [inviting,       setInviting]       = useState(false)
+  const [pendingInvites, setPendingInvites] = useState([])
 
   const liveRoom = rooms.find(r => (r._id || r.id) === roomId)
   const isMuted  = liveRoom?.isMuted || false
 
-  // ── Load group ────────────────────────────────────────────────────────────
+  // ── Load group ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!roomId) return
     setLoading(true)
@@ -91,17 +109,32 @@ export default function GroupInfo() {
       .catch(() => {})
   }, [roomId])
 
-  // Load pending invites for admin
+  // ── Total messages ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!roomId) return
+    messageService.fetchHistory(roomId)
+      .then(res => setTotalMsgs((res.data.messages || []).length))
+      .catch(() => {})
+  }, [roomId])
+
+  // ── Clear unread when in group info ───────────────────────────────────
+  useEffect(() => {
+    if (roomId) clearUnread(roomId)
+  }, [roomId, clearUnread])
+
+  const isAdmin = group?.createdBy?._id === currentUser?.id ||
+                  group?.createdBy?.toString() === currentUser?.id?.toString()
+
   const loadPendingInvites = useCallback(() => {
     if (!group || !isAdmin) return
     groupService.getGroupInvitations(group.id)
       .then(res => setPendingInvites(res.data.invitations || []))
       .catch(() => {})
-  }, [group])
+  }, [group, isAdmin])
 
   useEffect(() => { loadPendingInvites() }, [loadPendingInvites])
 
-  // ── Invite search ─────────────────────────────────────────────────────────
+  // ── Invite search ─────────────────────────────────────────────────────
   useEffect(() => {
     const q = debouncedInvite.trim()
     if (!q) { setInviteResults([]); return }
@@ -117,11 +150,7 @@ export default function GroupInfo() {
       .catch(() => setInviteResults([]))
   }, [debouncedInvite, group, currentUser])
 
-  // ── Derived: is current user the admin ────────────────────────────────────
-  const isAdmin = group?.createdBy?._id === currentUser?.id ||
-                  group?.createdBy?.toString() === currentUser?.id?.toString()
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────────
   const handleClearChat = async () => {
     if (!window.confirm('Clear all messages? This cannot be undone.')) return
     setBusy('clear')
@@ -155,13 +184,10 @@ export default function GroupInfo() {
   }
 
   const handleDeleteGroup = async () => {
-    if (!window.confirm('Permanently delete this group and all its messages? This cannot be undone.')) return
+    if (!window.confirm('Permanently delete this group and all its messages?')) return
     setBusy('delete')
-    try {
-      await groupService.deleteGroup(group.id)
-      removeRoom(group.id)
-      navigate('/', { replace: true })
-    } catch { alert('Failed to delete group.') }
+    try { await groupService.deleteGroup(group.id); removeRoom(group.id); navigate('/', { replace: true }) }
+    catch { alert('Failed to delete group.') }
     finally { setBusy('') }
   }
 
@@ -177,9 +203,7 @@ export default function GroupInfo() {
     setEditBusy(true)
     try {
       const res = await groupService.updateGroup(group.id, {
-        groupName:   editName.trim(),
-        description: editDesc.trim(),
-        avatar:      editAvatar
+        groupName: editName.trim(), description: editDesc.trim(), avatar: editAvatar
       })
       const updated = res.data.room
       setGroup(g => ({ ...g, name: updated.groupName, description: updated.description || '', avatarUrl: updated.avatarUrl || g.avatarUrl }))
@@ -201,26 +225,19 @@ export default function GroupInfo() {
     if (selectedInvite.length === 0) return
     setInviting(true)
     try {
-      const userIds = selectedInvite.map(u => u._id || u.id)
-      await groupService.inviteUsers(group.id, userIds)
-      setSelectedInvite([])
-      setInviteSearch('')
-      setInviteResults([])
-      setShowInvite(false)
+      await groupService.inviteUsers(group.id, selectedInvite.map(u => u._id || u.id))
+      setSelectedInvite([]); setInviteSearch(''); setInviteResults([]); setShowInvite(false)
       loadPendingInvites()
-      alert(`Invitation${userIds.length > 1 ? 's' : ''} sent!`)
+      alert(`Invitation${selectedInvite.length > 1 ? 's' : ''} sent!`)
     } catch (err) { alert(err.response?.data?.message || 'Failed to send invitations.') }
     finally { setInviting(false) }
   }
 
   const handleCancelInvite = async (invId) => {
-    try {
-      await groupService.cancelInvitation(group.id, invId)
-      setPendingInvites(prev => prev.filter(i => i._id !== invId))
-    } catch { alert('Failed to cancel invitation.') }
+    try { await groupService.cancelInvitation(group.id, invId); setPendingInvites(prev => prev.filter(i => i._id !== invId)) }
+    catch { alert('Failed to cancel invitation.') }
   }
 
-  // ── Loading / error ────────────────────────────────────────────────────────
   const TopBar = () => (
     <div style={s.topBar}>
       <button style={s.backBtn} onClick={() => navigate(-1)}>
@@ -249,6 +266,15 @@ export default function GroupInfo() {
     ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
     : '—'
 
+  const onlineMembers = group.members.filter(m => m.isOnline).length
+
+  // Tab content
+  const tabs = [
+    { key: 'info',    label: 'Info' },
+    { key: 'members', label: `Members (${group.members.length})` },
+    { key: 'media',   label: `Media${media.length + docs.length > 0 ? ` (${media.length + docs.length})` : ''}` },
+  ]
+
   return (
     <div style={s.page}>
       <TopBar />
@@ -256,10 +282,9 @@ export default function GroupInfo() {
       <div style={s.scroll}>
         <div style={s.inner}>
 
-          {/* ── Hero card ──────────────────────────────────────────────────── */}
+          {/* ── Hero Card ──────────────────────────────────────────────── */}
           <div style={s.heroCard}>
             {editMode ? (
-              /* edit state */
               <div style={s.editForm}>
                 <div style={s.editAvatarWrap} onClick={() => document.getElementById('gi-avatar-input').click()}>
                   <img src={editPreview || groupAvatarSrc} alt="group" style={s.editAvatarImg} />
@@ -282,14 +307,22 @@ export default function GroupInfo() {
                 </div>
               </div>
             ) : (
-              /* view state */
               <>
                 <div style={s.avatarRing}>
                   <img src={groupAvatarSrc} alt={group.name} style={s.heroAvatar} />
                 </div>
-                <div style={s.heroText}>
-                  <h2 style={s.heroName}>{group.name}</h2>
-                  <p style={s.heroSub}>Group · {group.members.length} members</p>
+                <h2 style={s.heroName}>{group.name}</h2>
+                <p style={s.heroSub}>
+                  Group · {group.members.length} members
+                  {onlineMembers > 0 && <span style={{ color: '#00a884', marginLeft: 4 }}>· {onlineMembers} online</span>}
+                </p>
+
+                {/* Stats */}
+                <div style={s.statsRow}>
+                  <StatCard icon="👥" label="Members" value={group.members.length} />
+                  {totalMsgs !== null && <StatCard icon="💬" label="Messages" value={totalMsgs} />}
+                  <StatCard icon="🖼️" label="Media" value={media.length} />
+                  <StatCard icon="📎" label="Docs" value={docs.length} />
                 </div>
 
                 <div style={s.actionRow}>
@@ -297,8 +330,7 @@ export default function GroupInfo() {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                     <span style={s.actionLabel}>Message</span>
                   </button>
-                  <button style={{ ...s.actionBtn, opacity: busy === 'mute' ? 0.5 : 1 }}
-                    onClick={handleMute} disabled={busy === 'mute'}>
+                  <button style={{ ...s.actionBtn, opacity: busy === 'mute' ? 0.5 : 1 }} onClick={handleMute} disabled={busy === 'mute'}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
                       stroke={isMuted ? '#f59e0b' : 'var(--color-primary)'}
                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -319,177 +351,196 @@ export default function GroupInfo() {
             )}
           </div>
 
-          {/* ── About ──────────────────────────────────────────────────────── */}
+          {/* ── Tab Navigation ─────────────────────────────────────────── */}
           {!editMode && (
-            <div style={s.section}>
-              <p style={s.sectionLabel}>About</p>
-              <div style={s.infoRow}>
-                <svg style={s.infoIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                <p style={s.infoValue}>{group.description || 'No group description'}</p>
-              </div>
-              <div style={s.rowDivider} />
-              <div style={s.infoRow}>
-                <svg style={s.infoIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                <div>
-                  <p style={s.infoValue}>Created {formatDate(group.createdAt)}</p>
-                  <p style={s.infoSub}>Group created</p>
-                </div>
-              </div>
+            <div style={s.tabBar}>
+              {tabs.map(t => (
+                <button key={t.key} style={{ ...s.tabBtn, ...(activeTab === t.key ? s.tabBtnActive : {}) }}
+                  onClick={() => setActiveTab(t.key)}>
+                  {t.label}
+                </button>
+              ))}
             </div>
           )}
 
-          {/* ── Members ────────────────────────────────────────────────────── */}
-          <div style={s.section}>
-            <div style={s.sectionHeader}>
-              <p style={s.sectionLabel}>{group.members.length} Members</p>
-              {isAdmin && (
-                <button style={s.inviteBtn} onClick={() => setShowInvite(v => !v)}>
-                  {showInvite ? '✕ Close' : '+ Invite'}
-                </button>
-              )}
-            </div>
-
-            {/* Invite panel */}
-            {showInvite && isAdmin && (
-              <div style={s.invitePanel}>
-                <input
-                  style={s.inviteSearchInput}
-                  placeholder="Search users to invite…"
-                  value={inviteSearch}
-                  onChange={e => setInviteSearch(e.target.value)}
-                  autoFocus
-                />
-                {inviteResults.length > 0 && (
-                  <div style={s.inviteResults}>
-                    {inviteResults.map(u => {
-                      const uid = u._id || u.id
-                      const sel = selectedInvite.some(x => (x._id || x.id) === uid)
-                      return (
-                        <div key={uid} style={{ ...s.inviteRow, background: sel ? 'var(--color-primary-light)' : 'transparent' }}
-                          onClick={() => toggleInviteUser(u)}>
-                          <img src={u.avatar || generateAvatar(u.name)} alt={u.name} style={s.inviteAvatar} />
-                          <div style={s.inviteInfo}>
-                            <span style={s.inviteName}>{u.name}</span>
-                            <span style={s.inviteEmail}>{u.email}</span>
-                          </div>
-                          <div style={{ ...s.checkbox, ...(sel ? s.checkboxChecked : {}) }}>
-                            {sel && <span style={s.checkmark}>✓</span>}
-                          </div>
-                        </div>
-                      )
-                    })}
+          {/* ── Tab: Info ──────────────────────────────────────────────── */}
+          {activeTab === 'info' && !editMode && (
+            <>
+              <div style={s.section}>
+                <p style={s.sectionLabel}>About</p>
+                <div style={s.infoRow}>
+                  <svg style={s.infoIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  <p style={s.infoValue}>{group.description || 'No group description'}</p>
+                </div>
+                <div style={s.rowDivider} />
+                <div style={s.infoRow}>
+                  <svg style={s.infoIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7"/></svg>
+                  <div>
+                    <p style={s.infoValue}>{group.createdBy?.name || 'Unknown'}</p>
+                    <p style={s.infoSub}>Created By</p>
                   </div>
+                </div>
+                <div style={s.rowDivider} />
+                <div style={s.infoRow}>
+                  <svg style={s.infoIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  <div>
+                    <p style={s.infoValue}>Created {formatDate(group.createdAt)}</p>
+                    <p style={s.infoSub}>Group Created</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Danger zone */}
+              <div style={s.dangerSection}>
+                <button style={{ ...s.dangerBtn, color: 'var(--color-text-muted)', opacity: busy === 'clear' ? 0.5 : 1 }}
+                  onClick={handleClearChat} disabled={busy === 'clear'}>
+                  <span style={s.dangerIcon}>🗑</span>
+                  {busy === 'clear' ? 'Clearing...' : 'Clear Chat'}
+                </button>
+                <div style={s.rowDivider} />
+                {!isAdmin && (
+                  <>
+                    <button style={{ ...s.dangerBtn, color: 'var(--color-error)', opacity: busy === 'leave' ? 0.5 : 1 }}
+                      onClick={handleLeave} disabled={busy === 'leave'}>
+                      <span style={s.dangerIcon}>🚪</span>
+                      {busy === 'leave' ? 'Leaving…' : 'Exit Group'}
+                    </button>
+                    <div style={s.rowDivider} />
+                  </>
                 )}
-                {inviteSearch.trim() && inviteResults.length === 0 && (
-                  <p style={s.inviteHint}>No users found</p>
+                <button style={{ ...s.dangerBtn, color: 'var(--color-error)', opacity: busy === 'report' ? 0.5 : 1 }}
+                  onClick={handleReport} disabled={busy === 'report'}>
+                  <span style={s.dangerIcon}>⚠️</span>
+                  {busy === 'report' ? 'Submitting...' : 'Report Group'}
+                </button>
+                {isAdmin && (
+                  <>
+                    <div style={s.rowDivider} />
+                    <button style={{ ...s.dangerBtn, color: 'var(--color-error)', opacity: busy === 'delete' ? 0.5 : 1 }}
+                      onClick={handleDeleteGroup} disabled={busy === 'delete'}>
+                      <span style={s.dangerIcon}>🗑</span>
+                      {busy === 'delete' ? 'Deleting…' : 'Delete Group'}
+                    </button>
+                  </>
                 )}
-                {selectedInvite.length > 0 && (
-                  <button
-                    style={{ ...s.sendInviteBtn, opacity: inviting ? 0.5 : 1 }}
-                    onClick={handleSendInvites}
-                    disabled={inviting}
-                  >
-                    {inviting ? 'Sending…' : `Send Invite${selectedInvite.length > 1 ? 's' : ''} (${selectedInvite.length})`}
+              </div>
+            </>
+          )}
+
+          {/* ── Tab: Members ───────────────────────────────────────────── */}
+          {activeTab === 'members' && !editMode && (
+            <div style={s.section}>
+              <div style={s.sectionHeader}>
+                <p style={s.sectionLabel}>{group.members.length} Members</p>
+                {isAdmin && (
+                  <button style={s.inviteBtn} onClick={() => setShowInvite(v => !v)}>
+                    {showInvite ? '✕ Close' : '+ Invite'}
                   </button>
                 )}
               </div>
-            )}
 
-            {/* Pending invitations (admin only) */}
-            {isAdmin && pendingInvites.length > 0 && (
-              <div style={s.pendingWrap}>
-                <p style={s.pendingLabel}>⏳ Pending Invitations ({pendingInvites.length})</p>
-                {pendingInvites.map(inv => (
-                  <div key={inv._id} style={s.pendingRow}>
-                    <img src={inv.invitedUser?.avatar || generateAvatar(inv.invitedUser?.name || 'U')}
-                      alt={inv.invitedUser?.name} style={s.pendingAvatar} />
-                    <span style={s.pendingName}>{inv.invitedUser?.name}</span>
-                    <button style={s.cancelInviteBtn} onClick={() => handleCancelInvite(inv._id)}>
-                      Cancel
+              {/* Invite panel */}
+              {showInvite && isAdmin && (
+                <div style={s.invitePanel}>
+                  <input style={s.inviteSearchInput} placeholder="Search users to invite…"
+                    value={inviteSearch} onChange={e => setInviteSearch(e.target.value)} autoFocus />
+                  {inviteResults.length > 0 && (
+                    <div style={s.inviteResults}>
+                      {inviteResults.map(u => {
+                        const uid = u._id || u.id
+                        const sel = selectedInvite.some(x => (x._id || x.id) === uid)
+                        return (
+                          <div key={uid} style={{ ...s.inviteRow, background: sel ? 'var(--color-primary-light)' : 'transparent' }}
+                            onClick={() => toggleInviteUser(u)}>
+                            <img src={u.avatar || generateAvatar(u.name)} alt={u.name} style={s.inviteAvatar} />
+                            <div style={s.inviteInfo}>
+                              <span style={s.inviteName}>{u.name}</span>
+                              <span style={s.inviteEmail}>{u.email}</span>
+                            </div>
+                            <div style={{ ...s.checkbox, ...(sel ? s.checkboxChecked : {}) }}>
+                              {sel && <span style={s.checkmark}>✓</span>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {inviteSearch.trim() && inviteResults.length === 0 && (
+                    <p style={s.inviteHint}>No users found</p>
+                  )}
+                  {selectedInvite.length > 0 && (
+                    <button style={{ ...s.sendInviteBtn, opacity: inviting ? 0.5 : 1 }}
+                      onClick={handleSendInvites} disabled={inviting}>
+                      {inviting ? 'Sending…' : `Send Invite${selectedInvite.length > 1 ? 's' : ''} (${selectedInvite.length})`}
                     </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Member list */}
-            {group.members.map((member, i) => {
-              const mInit = (member.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-              const isMe  = member.id?.toString() === currentUser?.id?.toString()
-              const canRemove = isAdmin && !isMe && member.role !== 'admin'
-              return (
-                <div key={member.id}>
-                  <div style={s.memberRow}>
-                    <div style={s.memberAvatarWrap} onClick={() => !isMe && navigate(`/user/${member.id}`)}>
-                      {member.avatar
-                        ? <img src={member.avatar} alt={member.name} style={s.memberAvatarImg} />
-                        : <div style={s.memberAvatar}>{mInit}</div>
-                      }
-                      {member.isOnline && <span style={s.onlineDot} />}
-                    </div>
-                    <div style={s.memberInfo} onClick={() => !isMe && navigate(`/user/${member.id}`)}>
-                      <span style={s.memberName}>
-                        {member.name}{isMe && <span style={s.youLabel}> (You)</span>}
-                      </span>
-                      <span style={s.memberSub}>{member.role === 'admin' ? 'Group Admin' : 'Member'}</span>
-                    </div>
-                    {member.role === 'admin' && <span style={s.adminBadge}>Admin</span>}
-                    {canRemove && (
-                      <button style={s.removeMemberBtn}
-                        onClick={() => handleRemoveMember(member.id, member.name)}>
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                  {i < group.members.length - 1 && <div style={s.rowDivider} />}
+                  )}
                 </div>
-              )
-            })}
-          </div>
+              )}
 
-          {/* ── Shared Media ──────────────────────────────────────────────── */}
-          <div style={s.section}>
-            <p style={s.sectionLabel}>Shared Media & Documents</p>
-            <MediaGallery media={media} documents={docs} />
-          </div>
+              {/* Pending invitations */}
+              {isAdmin && pendingInvites.length > 0 && (
+                <div style={s.pendingWrap}>
+                  <p style={s.pendingLabel}>⏳ Pending Invitations ({pendingInvites.length})</p>
+                  {pendingInvites.map(inv => (
+                    <div key={inv._id} style={s.pendingRow}>
+                      <img src={inv.invitedUser?.avatar || generateAvatar(inv.invitedUser?.name || 'U')}
+                        alt={inv.invitedUser?.name} style={s.pendingAvatar} />
+                      <span style={s.pendingName}>{inv.invitedUser?.name}</span>
+                      <button style={s.cancelInviteBtn} onClick={() => handleCancelInvite(inv._id)}>Cancel</button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-          {/* ── Danger zone ────────────────────────────────────────────────── */}
-          <div style={s.dangerSection}>
-            <button style={{ ...s.dangerBtn, color: 'var(--color-text-muted)', opacity: busy === 'clear' ? 0.5 : 1 }}
-              onClick={handleClearChat} disabled={busy === 'clear'}>
-              <span style={s.dangerIcon}>🗑</span>
-              {busy === 'clear' ? 'Clearing...' : 'Clear Chat'}
-            </button>
-            <div style={s.rowDivider} />
-            {!isAdmin && (
-              <>
-                <button style={{ ...s.dangerBtn, color: 'var(--color-error)', opacity: busy === 'leave' ? 0.5 : 1 }}
-                  onClick={handleLeave} disabled={busy === 'leave'}>
-                  <span style={s.dangerIcon}>🚪</span>
-                  {busy === 'leave' ? 'Leaving…' : 'Exit Group'}
-                </button>
-                <div style={s.rowDivider} />
-              </>
-            )}
-            <button style={{ ...s.dangerBtn, color: 'var(--color-error)', opacity: busy === 'report' ? 0.5 : 1 }}
-              onClick={handleReport} disabled={busy === 'report'}>
-              <span style={s.dangerIcon}>⚠️</span>
-              {busy === 'report' ? 'Submitting...' : 'Report Group'}
-            </button>
-            {isAdmin && (
-              <>
-                <div style={s.rowDivider} />
-                <button style={{ ...s.dangerBtn, color: 'var(--color-error)', opacity: busy === 'delete' ? 0.5 : 1 }}
-                  onClick={handleDeleteGroup} disabled={busy === 'delete'}>
-                  <span style={s.dangerIcon}>🗑</span>
-                  {busy === 'delete' ? 'Deleting…' : 'Delete Group'}
-                </button>
-              </>
-            )}
-          </div>
+              {/* Member list */}
+              {group.members.map((member, i) => {
+                const mInit = (member.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+                const isMe  = member.id?.toString() === currentUser?.id?.toString()
+                const canRemove = isAdmin && !isMe && member.role !== 'admin'
+                return (
+                  <div key={member.id}>
+                    <div style={s.memberRow}>
+                      <div style={s.memberAvatarWrap} onClick={() => !isMe && navigate(`/user/${member.id}`)}>
+                        {member.avatar
+                          ? <img src={member.avatar} alt={member.name} style={s.memberAvatarImg} />
+                          : <div style={s.memberAvatar}>{mInit}</div>
+                        }
+                        {member.isOnline && <span style={s.onlineDot} />}
+                      </div>
+                      <div style={s.memberInfo} onClick={() => !isMe && navigate(`/user/${member.id}`)}>
+                        <span style={s.memberName}>
+                          {member.name}{isMe && <span style={s.youLabel}> (You)</span>}
+                        </span>
+                        <span style={s.memberSub}>
+                          {member.role === 'admin' ? 'Group Admin' : member.isOnline ? '🟢 Online' : 'Member'}
+                        </span>
+                      </div>
+                      {member.role === 'admin' && <span style={s.adminBadge}>Admin</span>}
+                      {canRemove && (
+                        <button style={s.removeMemberBtn} onClick={() => handleRemoveMember(member.id, member.name)}>
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    {i < group.members.length - 1 && <div style={s.rowDivider} />}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* ── Tab: Media ─────────────────────────────────────────────── */}
+          {activeTab === 'media' && !editMode && (
+            <div style={s.section}>
+              <p style={s.sectionLabel}>Shared Media & Documents</p>
+              <MediaGallery media={media} documents={docs} />
+            </div>
+          )}
 
         </div>
       </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
@@ -506,26 +557,31 @@ const s = {
   loadingText:  { fontSize: 13, color: 'var(--color-text-muted)' },
 
   // Hero
-  heroCard:     { backgroundColor: 'var(--color-surface)', borderRadius: 12, padding: '28px 24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, border: '1px solid var(--color-border)' },
-  avatarRing:   { width: 96, height: 96, borderRadius: '50%', border: '3px solid rgba(124,110,247,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
-  heroAvatar:   { width: 84, height: 84, borderRadius: '50%', objectFit: 'cover' },
-  heroText:     { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 },
-  heroName:     { fontSize: 20, fontWeight: 700, color: 'var(--color-text)' },
+  heroCard:     { backgroundColor: 'var(--color-surface)', borderRadius: 16, padding: '32px 24px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, border: '1px solid var(--color-border)' },
+  avatarRing:   { width: 100, height: 100, borderRadius: '50%', border: '3px solid rgba(124,110,247,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  heroAvatar:   { width: 88, height: 88, borderRadius: '50%', objectFit: 'cover' },
+  heroName:     { fontSize: 22, fontWeight: 700, color: 'var(--color-text)' },
   heroSub:      { fontSize: 13, color: 'var(--color-text-muted)' },
-  actionRow:    { display: 'flex', gap: 8, marginTop: 8, width: '100%', justifyContent: 'center' },
-  actionBtn:    { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', cursor: 'pointer', padding: '10px 20px', borderRadius: 10, flex: 1, maxWidth: 110 },
+  statsRow:     { display: 'flex', gap: 8, width: '100%', marginTop: 4 },
+  actionRow:    { display: 'flex', gap: 8, marginTop: 4, width: '100%', justifyContent: 'center' },
+  actionBtn:    { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', cursor: 'pointer', padding: '10px 16px', borderRadius: 10, flex: 1, maxWidth: 110 },
   actionLabel:  { fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500, whiteSpace: 'nowrap' },
 
+  // Tabs
+  tabBar:       { display: 'flex', backgroundColor: 'var(--color-surface)', borderRadius: 12, padding: 4, gap: 2, border: '1px solid var(--color-border)' },
+  tabBtn:       { flex: 1, padding: '8px 0', borderRadius: 9, border: 'none', background: 'transparent', fontSize: 12, fontWeight: 500, color: 'var(--color-text-dim)', cursor: 'pointer', transition: 'all 0.15s' },
+  tabBtnActive: { background: 'var(--color-primary)', color: '#fff', fontWeight: 700 },
+
   // Edit form
-  editForm:         { width: '100%', display: 'flex', flexDirection: 'column', gap: 12 },
-  editAvatarWrap:   { position: 'relative', width: 80, height: 80, margin: '0 auto', cursor: 'pointer', borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--color-primary)' },
-  editAvatarImg:    { width: '100%', height: '100%', objectFit: 'cover' },
-  editAvatarOverlay:{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 },
-  editInput:        { backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text)', fontSize: 14, padding: '10px 12px', outline: 'none', width: '100%' },
-  editTextarea:     { backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text)', fontSize: 14, padding: '10px 12px', outline: 'none', width: '100%', resize: 'none', fontFamily: 'inherit' },
-  editActions:      { display: 'flex', gap: 10, justifyContent: 'flex-end' },
-  cancelEditBtn:    { padding: '8px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', fontSize: 13, cursor: 'pointer' },
-  saveEditBtn:      { padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  editForm:          { width: '100%', display: 'flex', flexDirection: 'column', gap: 12 },
+  editAvatarWrap:    { position: 'relative', width: 80, height: 80, margin: '0 auto', cursor: 'pointer', borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--color-primary)' },
+  editAvatarImg:     { width: '100%', height: '100%', objectFit: 'cover' },
+  editAvatarOverlay: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 },
+  editInput:         { backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text)', fontSize: 14, padding: '10px 12px', outline: 'none', width: '100%' },
+  editTextarea:      { backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text)', fontSize: 14, padding: '10px 12px', outline: 'none', width: '100%', resize: 'none', fontFamily: 'inherit' },
+  editActions:       { display: 'flex', gap: 10, justifyContent: 'flex-end' },
+  cancelEditBtn:     { padding: '8px 18px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'transparent', color: 'var(--color-text-muted)', fontSize: 13, cursor: 'pointer' },
+  saveEditBtn:       { padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
 
   // Section
   section:      { backgroundColor: 'var(--color-surface)', borderRadius: 12, padding: '16px 20px', border: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 10 },
@@ -537,28 +593,28 @@ const s = {
   infoSub:      { fontSize: 11, color: 'var(--color-text-dim)', marginTop: 2 },
   rowDivider:   { height: 1, background: 'var(--color-divider)', margin: '4px 0' },
 
-  // Invite panel
-  inviteBtn:        { fontSize: 12, fontWeight: 600, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '1px solid var(--color-primary)', borderRadius: 20, padding: '4px 14px', cursor: 'pointer' },
-  invitePanel:      { backgroundColor: 'var(--color-surface-2)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, border: '1px solid var(--color-border)' },
-  inviteSearchInput:{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text)', fontSize: 13, padding: '8px 12px', outline: 'none', width: '100%' },
-  inviteResults:    { maxHeight: 200, overflowY: 'auto', borderRadius: 8, border: '1px solid var(--color-border)' },
-  inviteRow:        { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', cursor: 'pointer', transition: 'background 0.12s' },
-  inviteAvatar:     { width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 },
-  inviteInfo:       { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' },
-  inviteName:       { fontSize: 13, fontWeight: 600, color: 'var(--color-text)' },
-  inviteEmail:      { fontSize: 11, color: 'var(--color-text-dim)' },
-  inviteHint:       { fontSize: 12, color: 'var(--color-text-dim)', textAlign: 'center', padding: '6px 0' },
-  sendInviteBtn:    { width: '100%', padding: '9px 0', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
-  checkbox:         { width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  checkboxChecked:  { backgroundColor: 'var(--color-primary)', borderColor: 'var(--color-primary)' },
-  checkmark:        { color: '#fff', fontSize: 11, fontWeight: 700 },
+  // Invite
+  inviteBtn:         { fontSize: 12, fontWeight: 600, color: 'var(--color-primary)', background: 'var(--color-primary-light)', border: '1px solid var(--color-primary)', borderRadius: 20, padding: '4px 14px', cursor: 'pointer' },
+  invitePanel:       { backgroundColor: 'var(--color-surface-2)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8, border: '1px solid var(--color-border)' },
+  inviteSearchInput: { backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, color: 'var(--color-text)', fontSize: 13, padding: '8px 12px', outline: 'none', width: '100%' },
+  inviteResults:     { maxHeight: 200, overflowY: 'auto', borderRadius: 8, border: '1px solid var(--color-border)' },
+  inviteRow:         { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', cursor: 'pointer' },
+  inviteAvatar:      { width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 },
+  inviteInfo:        { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' },
+  inviteName:        { fontSize: 13, fontWeight: 600, color: 'var(--color-text)' },
+  inviteEmail:       { fontSize: 11, color: 'var(--color-text-dim)' },
+  inviteHint:        { fontSize: 12, color: 'var(--color-text-dim)', textAlign: 'center', padding: '6px 0' },
+  sendInviteBtn:     { width: '100%', padding: '9px 0', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  checkbox:          { width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  checkboxChecked:   { backgroundColor: 'var(--color-primary)', borderColor: 'var(--color-primary)' },
+  checkmark:         { color: '#fff', fontSize: 11, fontWeight: 700 },
 
-  // Pending invites
-  pendingWrap:  { backgroundColor: 'rgba(124,110,247,0.06)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 },
-  pendingLabel: { fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 2 },
-  pendingRow:   { display: 'flex', alignItems: 'center', gap: 10 },
-  pendingAvatar:{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 },
-  pendingName:  { flex: 1, fontSize: 13, color: 'var(--color-text)', fontWeight: 500 },
+  // Pending
+  pendingWrap:     { backgroundColor: 'rgba(124,110,247,0.06)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 },
+  pendingLabel:    { fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 2 },
+  pendingRow:      { display: 'flex', alignItems: 'center', gap: 10 },
+  pendingAvatar:   { width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 },
+  pendingName:     { flex: 1, fontSize: 13, color: 'var(--color-text)', fontWeight: 500 },
   cancelInviteBtn: { fontSize: 11, fontWeight: 600, color: 'var(--color-error)', background: 'transparent', border: '1px solid var(--color-error)', borderRadius: 12, padding: '3px 10px', cursor: 'pointer' },
 
   // Members
@@ -566,7 +622,7 @@ const s = {
   memberAvatarWrap: { position: 'relative', flexShrink: 0, cursor: 'pointer' },
   memberAvatar:     { width: 42, height: 42, borderRadius: '50%', background: 'linear-gradient(135deg,#9c8ef7,#7c6ef7)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 14 },
   memberAvatarImg:  { width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' },
-  onlineDot:        { position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: '50%', backgroundColor: 'var(--color-online)', border: '2px solid var(--color-surface)' },
+  onlineDot:        { position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: '50%', backgroundColor: '#00a884', border: '2px solid var(--color-surface)' },
   memberInfo:       { flex: 1, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, cursor: 'pointer' },
   memberName:       { fontSize: 14, fontWeight: 500, color: 'var(--color-text)' },
   youLabel:         { fontSize: 12, color: 'var(--color-text-muted)', fontWeight: 400 },
@@ -575,7 +631,7 @@ const s = {
   removeMemberBtn:  { fontSize: 11, fontWeight: 600, color: 'var(--color-error)', background: 'transparent', border: '1px solid var(--color-error)', borderRadius: 12, padding: '3px 10px', cursor: 'pointer', flexShrink: 0 },
 
   // Danger
-  dangerSection:{ backgroundColor: 'var(--color-surface)', borderRadius: 12, padding: '4px 20px', border: '1px solid var(--color-border)' },
-  dangerBtn:    { display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none', padding: '13px 0', fontSize: 14, cursor: 'pointer', fontWeight: 500, textAlign: 'left' },
-  dangerIcon:   { fontSize: 16 },
+  dangerSection: { backgroundColor: 'var(--color-surface)', borderRadius: 12, padding: '4px 20px', border: '1px solid var(--color-border)' },
+  dangerBtn:     { display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none', padding: '13px 0', fontSize: 14, cursor: 'pointer', fontWeight: 500, textAlign: 'left' },
+  dangerIcon:    { fontSize: 16 },
 }
