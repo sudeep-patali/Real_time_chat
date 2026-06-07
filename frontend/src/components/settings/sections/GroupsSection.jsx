@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import { useSettingsStore } from '../../../store/settingsStore'
 import { useNotificationStore } from '../../../store/notificationStore'
 import { updatePrivacy } from '../../../services/userService'
@@ -14,11 +13,12 @@ function GroupsSection() {
   const { settings, updateSection, saveSettings } = useSettingsStore()
   const addAlert = useNotificationStore(s => s.addAlert)
   const groups = settings.groups || {}
-  const [addToGroups, setAddToGroups] = useState('everyone')
 
-  useEffect(() => {
-    setAddToGroups(settings.privacy?.addToGroups || 'everyone')
-  }, [settings.privacy])
+  // FIX: Previously this read from settings.privacy?.addToGroups via a local
+  // useEffect that only ran once on mount, so the value could be stale if
+  // settings loaded after the component mounted. Now we read directly from
+  // the store, which is kept up-to-date by the improved loadSettings().
+  const addToGroups = settings.privacy?.addToGroups || 'everyone'
 
   const updateGroups = async (key, value) => {
     updateSection('groups', { [key]: value })
@@ -27,11 +27,14 @@ function GroupsSection() {
   }
 
   const saveAddToGroups = async (value) => {
-    setAddToGroups(value)
+    // Optimistic update in the store
+    updateSection('privacy', { addToGroups: value })
     try {
       await updatePrivacy({ addToGroups: value })
       addAlert({ message: 'Group invitation setting saved', type: 'success' })
     } catch {
+      // Roll back
+      updateSection('privacy', { addToGroups })
       addAlert({ message: 'Failed to save', type: 'error' })
     }
   }

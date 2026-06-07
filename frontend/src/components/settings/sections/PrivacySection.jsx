@@ -19,34 +19,34 @@ function PrivacySection() {
   const [pwLoading, setPwLoading] = useState(false)
   const [blocked, setBlocked] = useState([])
   const [loadingBlocked, setLoadingBlocked] = useState(true)
-  const [blockInput, setBlockInput] = useState('')
-  const [privacyForm, setPrivacyForm] = useState({
-    lastSeen: 'everyone', onlineStatus: 'everyone',
-    readReceipts: true, typingIndicator: true,
-  })
+
+  // FIX: Instead of maintaining a separate local privacyForm state that diverges
+  // from the store, we read directly from settings.privacy. The improved
+  // getSettings endpoint now merges lastSeen/onlineStatus into settings.privacy
+  // so the store always has the full picture.
+  const privacy = settings.privacy || {}
 
   useEffect(() => {
-    setPrivacyForm({
-      lastSeen: settings.privacy?.lastSeen || 'everyone',
-      onlineStatus: settings.privacy?.onlineStatus || 'everyone',
-      readReceipts: settings.privacy?.readReceipts !== false,
-      typingIndicator: settings.privacy?.typingIndicator !== false,
-    })
     setLoadingBlocked(true)
     getBlockedUsers()
-      .then(r => setBlocked(r.data.blockedUsers || []))
+      .then(r => setBlocked(r.data.blockedUsers || r.data.users || []))
       .catch(() => {})
       .finally(() => setLoadingBlocked(false))
   }, [])
 
+  // Save a privacy field. Fields like readReceipts/typingIndicator are stored
+  // under user.privacy in the DB (not user.settings.privacy) so we call
+  // updatePrivacy which maps to PUT /api/users/me/privacy.
+  // We also update the local store so the UI is in sync without a reload.
   const savePrivacy = async (patch) => {
-    const updated = { ...privacyForm, ...patch }
-    setPrivacyForm(updated)
+    // Optimistic store update for immediate UI feedback
+    updateSection('privacy', patch)
     try {
-      await updatePrivacy(updated)
-      updateSection('privacy', { readReceipts: updated.readReceipts, typingIndicator: updated.typingIndicator })
+      await updatePrivacy({ ...privacy, ...patch })
       addAlert({ message: 'Privacy settings saved', type: 'success' })
     } catch {
+      // Roll back the optimistic update
+      updateSection('privacy', privacy)
       addAlert({ message: 'Failed to save privacy settings', type: 'error' })
     }
   }
@@ -73,7 +73,7 @@ function PrivacySection() {
   const handleUnblock = async (userId) => {
     try {
       await blockUser(userId) // toggles
-      setBlocked(prev => prev.filter(u => u._id !== userId))
+      setBlocked(prev => prev.filter(u => (u._id || u.id) !== userId))
       addAlert({ message: 'User unblocked', type: 'success' })
     } catch {
       addAlert({ message: 'Failed to unblock user', type: 'error' })
@@ -133,7 +133,10 @@ function PrivacySection() {
             <div className="settings-row-label">Last Seen</div>
             <div className="settings-row-desc">Who can see when you were last online</div>
           </div>
-          <select className="settings-select" value={privacyForm.lastSeen}
+          {/* FIX: Now reads from settings.privacy.lastSeen (populated by the
+              improved getSettings endpoint) instead of local state that was
+              never properly initialised from the store. */}
+          <select className="settings-select" value={privacy.lastSeen || 'everyone'}
             onChange={e => savePrivacy({ lastSeen: e.target.value })}>
             {VISIBILITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -143,7 +146,7 @@ function PrivacySection() {
             <div className="settings-row-label">Online Status</div>
             <div className="settings-row-desc">Who can see when you're online</div>
           </div>
-          <select className="settings-select" value={privacyForm.onlineStatus}
+          <select className="settings-select" value={privacy.onlineStatus || 'everyone'}
             onChange={e => savePrivacy({ onlineStatus: e.target.value })}>
             {VISIBILITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -152,7 +155,7 @@ function PrivacySection() {
         <div className="settings-subsection-label">Interaction</div>
         <div className="settings-row">
           <Toggle
-            checked={privacyForm.readReceipts}
+            checked={privacy.readReceipts !== false}
             onChange={v => savePrivacy({ readReceipts: v })}
             label="Read Receipts"
             description="Show when you've read messages"
@@ -160,7 +163,7 @@ function PrivacySection() {
         </div>
         <div className="settings-row">
           <Toggle
-            checked={privacyForm.typingIndicator}
+            checked={privacy.typingIndicator !== false}
             onChange={v => savePrivacy({ typingIndicator: v })}
             label="Typing Indicator"
             description="Show when you're typing a message"
@@ -188,13 +191,13 @@ function PrivacySection() {
           </div>
         ) : (
           blocked.map(user => (
-            <div key={user._id} className="settings-user-item">
+            <div key={user._id || user.id} className="settings-user-item">
               {user.avatar
                 ? <img src={user.avatar} alt={user.name} className="settings-user-avatar" style={{ borderRadius: '50%', objectFit: 'cover' }} />
                 : <div className="settings-user-avatar">{user.name?.[0]?.toUpperCase()}</div>
               }
               <div className="settings-user-name">{user.name}</div>
-              <button className="settings-btn danger" onClick={() => handleUnblock(user._id)}>Unblock</button>
+              <button className="settings-btn danger" onClick={() => handleUnblock(user._id || user.id)}>Unblock</button>
             </div>
           ))
         )}

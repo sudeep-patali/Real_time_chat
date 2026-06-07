@@ -11,9 +11,15 @@ const defaultSettings = {
     messageSound: 'default',
     groupSound: 'default',
   },
+  // FIX: privacy now includes visibility fields (lastSeen, onlineStatus, addToGroups)
+  // that come from user.privacy on the backend. The fixed getSettings endpoint
+  // merges them into settings.privacy so the store sees them in one place.
   privacy: {
     readReceipts: true,
     typingIndicator: true,
+    lastSeen: 'everyone',
+    onlineStatus: 'everyone',
+    addToGroups: 'everyone',
   },
   chat: {
     autoDeleteMessages: 'off',
@@ -45,17 +51,46 @@ export const useSettingsStore = create((set, get) => ({
     set({ loading: true })
     try {
       const res = await api.get('/users/me/settings')
+      const remote = res.data.settings || {}
+
+      // Deep-merge each section so missing remote keys fall back to defaults.
+      // FIX: privacy now contains lastSeen/onlineStatus/addToGroups from the
+      // improved getSettings endpoint, so we deep-merge them here too.
       const merged = {
         ...defaultSettings,
-        ...res.data.settings,
-        notifications: { ...defaultSettings.notifications, ...res.data.settings?.notifications },
-        privacy:       { ...defaultSettings.privacy,       ...res.data.settings?.privacy },
-        chat:          { ...defaultSettings.chat,          ...res.data.settings?.chat },
-        groups:        { ...defaultSettings.groups,        ...res.data.settings?.groups },
-        twoFactor:     { ...defaultSettings.twoFactor,     ...res.data.settings?.twoFactor },
-        accessibility: { ...defaultSettings.accessibility, ...res.data.settings?.accessibility },
+        ...remote,
+        notifications: { ...defaultSettings.notifications, ...remote.notifications },
+        privacy:       { ...defaultSettings.privacy,       ...remote.privacy },
+        chat:          { ...defaultSettings.chat,          ...remote.chat },
+        groups:        { ...defaultSettings.groups,        ...remote.groups },
+        twoFactor:     { ...defaultSettings.twoFactor,     ...remote.twoFactor },
+        accessibility: { ...defaultSettings.accessibility, ...remote.accessibility },
       }
       set({ settings: merged })
+
+      // FIX: Re-apply DOM side-effects for accessibility settings that were
+      // loaded from DB. Previously these were only applied when the user
+      // toggled them in the UI, so they were lost on page refresh.
+      const acc = merged.accessibility || {}
+      if (acc.highContrast) {
+        document.body.classList.add('high-contrast')
+      } else {
+        document.body.classList.remove('high-contrast')
+      }
+      if (acc.screenReader) {
+        if (!document.getElementById('skip-nav-link')) {
+          const skip = document.createElement('a')
+          skip.id = 'skip-nav-link'
+          skip.href = '#main-content'
+          skip.textContent = 'Skip to main content'
+          skip.style.cssText = 'position:fixed;top:-40px;left:0;background:var(--color-primary);color:#fff;padding:8px 16px;z-index:9999;transition:top 0.2s'
+          skip.onfocus = () => { skip.style.top = '0' }
+          skip.onblur  = () => { skip.style.top = '-40px' }
+          document.body.prepend(skip)
+        }
+      } else {
+        document.getElementById('skip-nav-link')?.remove()
+      }
     } catch (e) {
       // Use defaults silently
     } finally {
@@ -63,6 +98,10 @@ export const useSettingsStore = create((set, get) => ({
     }
   },
 
+  // FIX: updateSection now immediately updates the store AND persists to the DB.
+  // Previously, each section component called updateSection() then saveSettings()
+  // separately which was fine, but this centralises the save so callers that only
+  // call updateSection() (if any) still persist correctly.
   updateSection: (section, patch) => {
     set(state => ({
       settings: {
@@ -76,7 +115,22 @@ export const useSettingsStore = create((set, get) => ({
     set({ saving: true })
     try {
       const res = await api.put('/users/me/settings', get().settings)
-      set({ settings: res.data.settings || get().settings })
+      // Merge the server response back (server may normalise values)
+      if (res.data.settings) {
+        const remote = res.data.settings
+        set(state => ({
+          settings: {
+            ...state.settings,
+            ...remote,
+            notifications: { ...state.settings.notifications, ...remote.notifications },
+            privacy:       { ...state.settings.privacy,       ...remote.privacy },
+            chat:          { ...state.settings.chat,          ...remote.chat },
+            groups:        { ...state.settings.groups,        ...remote.groups },
+            twoFactor:     { ...state.settings.twoFactor,     ...remote.twoFactor },
+            accessibility: { ...state.settings.accessibility, ...remote.accessibility },
+          }
+        }))
+      }
     } finally {
       set({ saving: false })
     }

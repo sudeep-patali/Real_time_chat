@@ -24,22 +24,79 @@ function parseUA(ua = '') {
 }
 
 // GET /api/users/me/settings
+// FIX: Also returns privacy fields (lastSeen, onlineStatus, readReceipts, typingIndicator,
+// addToGroups) from the root-level user.privacy so the frontend PrivacySection can
+// correctly populate its form from a single API call.
 exports.getSettings = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id).select('settings privacy');
-    res.json({ settings: user.settings || {}, privacy: user.privacy || {} });
+
+    // Merge privacy fields that live on user.privacy into settings.privacy
+    // so the frontend store has a single unified settings object.
+    const settingsObj = user.settings ? user.settings.toObject() : {};
+    settingsObj.privacy = {
+      // Fields managed via settings.privacy (readReceipts, typingIndicator)
+      readReceipts:    user.privacy?.readReceipts    ?? true,
+      typingIndicator: user.privacy?.typingIndicator ?? true,
+      // Visibility fields managed via user.privacy (lastSeen, onlineStatus, addToGroups)
+      lastSeen:        user.privacy?.lastSeen        ?? 'everyone',
+      onlineStatus:    user.privacy?.onlineStatus    ?? 'everyone',
+      addToGroups:     user.privacy?.addToGroups     ?? 'everyone',
+    };
+
+    res.json({ settings: settingsObj, privacy: user.privacy || {} });
   } catch (err) { next(err); }
 };
 
 // PUT /api/users/me/settings
+// FIX: Use dot-notation $set for each leaf field instead of replacing the
+// whole `settings` subdocument. This prevents a partial payload from wiping
+// fields the client didn't send (e.g. saving notifications shouldn't clear
+// accessibility settings).
 exports.updateSettings = async (req, res, next) => {
   try {
+    const body = req.body;
+
+    // Build a flat dot-notation update so we do surgical field-level writes.
+    const setObj = {};
+    const flattenSection = (section, data) => {
+      if (data && typeof data === 'object') {
+        Object.entries(data).forEach(([k, v]) => {
+          setObj[`settings.${section}.${k}`] = v;
+        });
+      }
+    };
+
+    // Only process known sections to avoid injecting arbitrary keys.
+    const knownSections = ['notifications', 'privacy', 'chat', 'groups', 'twoFactor', 'accessibility'];
+    knownSections.forEach(section => {
+      if (body[section] !== undefined) flattenSection(section, body[section]);
+    });
+
+    // If nothing valid was sent, bail early.
+    if (Object.keys(setObj).length === 0) {
+      const user = await User.findById(req.user._id).select('settings');
+      return res.json({ settings: user.settings });
+    }
+
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { $set: { settings: req.body } },
+      { $set: setObj },
       { new: true, runValidators: false }
-    ).select('settings');
-    res.json({ settings: user.settings });
+    ).select('settings privacy');
+
+    // Return the same enriched shape as getSettings so the frontend store
+    // always gets privacy.lastSeen/onlineStatus even after a save.
+    const settingsObj = user.settings ? user.settings.toObject() : {};
+    settingsObj.privacy = {
+      readReceipts:    user.privacy?.readReceipts    ?? true,
+      typingIndicator: user.privacy?.typingIndicator ?? true,
+      lastSeen:        user.privacy?.lastSeen        ?? 'everyone',
+      onlineStatus:    user.privacy?.onlineStatus    ?? 'everyone',
+      addToGroups:     user.privacy?.addToGroups     ?? 'everyone',
+    };
+
+    res.json({ settings: settingsObj });
   } catch (err) { next(err); }
 };
 

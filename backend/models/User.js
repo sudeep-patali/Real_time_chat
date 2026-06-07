@@ -22,11 +22,11 @@ const userSchema = new mongoose.Schema({
 
   // Privacy settings
   privacy: {
-    profilePhoto:  { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
-    lastSeen:      { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
-    onlineStatus:  { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
-    addToGroups:   { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
-    messages:      { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+    profilePhoto:    { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+    lastSeen:        { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+    onlineStatus:    { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+    addToGroups:     { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
+    messages:        { type: String, enum: ['everyone','accepted','nobody'], default: 'everyone' },
     readReceipts:    { type: Boolean, default: true },
     typingIndicator: { type: Boolean, default: true },
   },
@@ -70,7 +70,15 @@ const userSchema = new mongoose.Schema({
       highContrast:      { type: Boolean, default: false },
       keyboardShortcuts: { type: Boolean, default: true },
       screenReader:      { type: Boolean, default: false },
-    }
+    },
+    // FIX: Added appearance subdocument so font size, bubble size, and compact
+    // mode are persisted to the database and survive cross-device login.
+    // Previously these settings only lived in localStorage.
+    appearance: {
+      fontSize:    { type: String, enum: ['small', 'medium', 'large'], default: 'medium' },
+      bubbleSize:  { type: String, enum: ['compact', 'normal', 'large'], default: 'normal' },
+      compactMode: { type: Boolean, default: false },
+    },
   },
 
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

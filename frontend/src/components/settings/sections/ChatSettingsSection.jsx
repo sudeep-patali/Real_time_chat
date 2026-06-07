@@ -4,6 +4,14 @@ import { useNotificationStore } from '../../../store/notificationStore'
 import ConfirmModal from '../ConfirmModal'
 import Toggle from '../Toggle'
 
+// FIX: Get the current user id so we can protect per-user keys from clearCache.
+function getCurrentUserId() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user'))
+    return user?.id || user?._id || null
+  } catch { return null }
+}
+
 function ChatSettingsSection() {
   const { settings, updateSection, saveSettings } = useSettingsStore()
   const addAlert = useNotificationStore(s => s.addAlert)
@@ -27,11 +35,41 @@ function ChatSettingsSection() {
   }
 
   const clearCache = () => {
-    const keysToKeep = ['theme', 'token', 'user', 'fontSize', 'bubbleSize', 'compactMode']
+    const uid = getCurrentUserId()
+
+    // FIX: The original code only preserved bare keys like 'theme', 'fontSize'
+    // etc., but all per-user settings follow the pattern `key_userId`.
+    // Clearing without preserving the user-keyed variants destroyed all
+    // appearance settings on every cache clear.
+    //
+    // Strategy: preserve auth data, per-user appearance prefs, and wallpapers.
+    // Everything else (cached API responses, temp blobs, etc.) is removed.
+    const keysToPreserve = new Set([
+      'token',
+      'user',
+    ])
+
+    // Always preserve user-specific appearance keys if a user is logged in
+    if (uid) {
+      keysToPreserve.add(`theme_${uid}`)
+      keysToPreserve.add(`fontSize_${uid}`)
+      keysToPreserve.add(`bubbleSize_${uid}`)
+      keysToPreserve.add(`compactMode_${uid}`)
+      keysToPreserve.add(`wallpaper-light_${uid}`)
+      keysToPreserve.add(`wallpaper-dark_${uid}`)
+    }
+
+    // Also preserve bare (non-user-keyed) fallback values
+    keysToPreserve.add('theme')
+    keysToPreserve.add('fontSize')
+    keysToPreserve.add('bubbleSize')
+    keysToPreserve.add('compactMode')
+
     const allKeys = Object.keys(localStorage)
     allKeys.forEach(k => {
-      if (!keysToKeep.includes(k)) localStorage.removeItem(k)
+      if (!keysToPreserve.has(k)) localStorage.removeItem(k)
     })
+
     addAlert({ message: 'Cache cleared successfully', type: 'success' })
     setShowClearModal(false)
   }

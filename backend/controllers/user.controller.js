@@ -148,16 +148,23 @@ exports.updateProfile = async (req, res, next) => {
 };
 
 // PUT /api/users/me/privacy
+// FIX: Added readReceipts and typingIndicator — previously these were sent from
+// the frontend but silently ignored here, so changes were never persisted to DB.
 exports.updatePrivacy = async (req, res, next) => {
   try {
-    const { profilePhoto, lastSeen, onlineStatus, addToGroups, messages } = req.body;
+    const {
+      profilePhoto, lastSeen, onlineStatus, addToGroups, messages,
+      readReceipts, typingIndicator,         // ← FIX: handle these fields
+    } = req.body;
 
     const privacyUpdate = {};
-    if (profilePhoto !== undefined) privacyUpdate['privacy.profilePhoto'] = profilePhoto;
-    if (lastSeen     !== undefined) privacyUpdate['privacy.lastSeen']     = lastSeen;
-    if (onlineStatus !== undefined) privacyUpdate['privacy.onlineStatus'] = onlineStatus;
-    if (addToGroups  !== undefined) privacyUpdate['privacy.addToGroups']  = addToGroups;
-    if (messages     !== undefined) privacyUpdate['privacy.messages']     = messages;
+    if (profilePhoto     !== undefined) privacyUpdate['privacy.profilePhoto']    = profilePhoto;
+    if (lastSeen         !== undefined) privacyUpdate['privacy.lastSeen']         = lastSeen;
+    if (onlineStatus     !== undefined) privacyUpdate['privacy.onlineStatus']     = onlineStatus;
+    if (addToGroups      !== undefined) privacyUpdate['privacy.addToGroups']      = addToGroups;
+    if (messages         !== undefined) privacyUpdate['privacy.messages']         = messages;
+    if (readReceipts     !== undefined) privacyUpdate['privacy.readReceipts']     = readReceipts;     // ← FIX
+    if (typingIndicator  !== undefined) privacyUpdate['privacy.typingIndicator']  = typingIndicator;  // ← FIX
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
