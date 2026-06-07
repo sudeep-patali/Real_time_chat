@@ -93,7 +93,19 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
     isStartingRef.current = true
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // FIX 1: Explicit audio constraints for consistent 48 kHz mono capture
+      // across all browsers and OS audio systems. Without these, some browsers
+      // default to a different sample rate (e.g. 44100 Hz on Linux), which can
+      // cause subtle playback issues or trigger resampling artefacts.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate:        48000,
+          channelCount:      1,     // mono is sufficient for voice
+          echoCancellation:  true,
+          noiseSuppression:  true,
+          autoGainControl:   true,
+        }
+      })
       streamRef.current = stream
 
       // ── Clone stream for visualiser so AudioContext never touches the recorder stream ──
@@ -124,7 +136,15 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
           ? 'audio/webm'
           : 'audio/ogg'
 
-      const recorder = new MediaRecorder(stream, { mimeType })
+      // FIX 2: Set a constant bitrate so the browser can write a duration header
+      // into the WebM container. Without audioBitsPerSecond, many browsers produce
+      // a variable-bitrate stream with no duration metadata — audio.duration comes
+      // back as Infinity and the scrubber shows 00:00. 64 kbps gives good voice
+      // quality at a small file size (≈8 KB/s).
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: 64000,
+      })
       chunksRef.current = []
 
       recorder.ondataavailable = (e) => {

@@ -22,6 +22,14 @@ const fmt = (secs) => {
  * FIX: Use src attribute directly on <audio> (not <source> children).
  * Direct src attribute + audio.load() reload path works correctly.
  * <source> children don't reliably re-resolve after attribute changes.
+ *
+ * FIX: Handle Infinity duration from streaming WebM.
+ * Browsers report audio.duration = Infinity for WebM files that have no
+ * duration header written (common with variable-bitrate MediaRecorder output).
+ * When this happens we fall back to totalDuration (the integer second count
+ * from the recorder timer). With audioBitsPerSecond set in MediaRecorder,
+ * most browsers now write the header correctly, but the Infinity guard is
+ * kept here as a safety net for older browsers and ogg fallback files.
  */
 function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
   const [playing,     setPlaying]     = useState(false)
@@ -47,8 +55,14 @@ function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
     const audio = audioRef.current
     if (!audio) return
     if (isFinite(audio.duration) && audio.duration > 0) {
+      // FIX: Prefer the browser-decoded duration over the timer-based fallback.
+      // audio.duration is a float (e.g. 3.84 s) while totalDuration is always a
+      // whole-second integer from the setInterval counter. The browser value is
+      // more accurate and makes the scrubber position correctly.
       setDuration(audio.duration)
     }
+    // If audio.duration is Infinity (no duration header in the WebM), keep the
+    // totalDuration fallback that was already set in state — do nothing here.
   }
 
   const handleTimeUpdate = () => {

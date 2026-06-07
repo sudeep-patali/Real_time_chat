@@ -59,14 +59,20 @@ app.get('/uploads/:filename', (req, res) => {
   const filePath = path.join(uploadsDir, req.params.filename)
   if (!fs.existsSync(filePath)) return res.status(404).end()
 
-  const stat = fs.statSync(filePath)
+  const stat  = fs.statSync(filePath)
   const total = stat.size
   const range = req.headers.range
 
-  // Determine content-type from extension
+  // FIX: Use the full codec string for .webm files.
+  // Previously '.webm' mapped to 'audio/webm', but MediaRecorder records with
+  // the opus codec and reports the blob type as 'audio/webm;codecs=opus'.
+  // Some browsers (especially Firefox) are strict about the codec declaration
+  // and will refuse to decode audio served without it. Using the full codec
+  // string ensures the Content-Type matches what was recorded, preventing
+  // silent playback or "media resource could not be decoded" errors.
   const ext = path.extname(filePath).toLowerCase()
   const mimeMap = {
-    '.webm': 'audio/webm',
+    '.webm': 'audio/webm;codecs=opus',   // was: 'audio/webm'
     '.ogg':  'audio/ogg;codecs=opus',
     '.mp3':  'audio/mpeg',
     '.mp4':  'video/mp4',
@@ -93,9 +99,9 @@ app.get('/uploads/:filename', (req, res) => {
   }
 
   if (range) {
-    const parts = range.replace(/bytes=/, '').split('-')
-    const start = parseInt(parts[0], 10)
-    const end   = parts[1] ? parseInt(parts[1], 10) : total - 1
+    const parts     = range.replace(/bytes=/, '').split('-')
+    const start     = parseInt(parts[0], 10)
+    const end       = parts[1] ? parseInt(parts[1], 10) : total - 1
     const chunkSize = end - start + 1
 
     res.writeHead(206, {
