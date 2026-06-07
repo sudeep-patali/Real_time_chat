@@ -5,6 +5,7 @@ const { Server } = require('socket.io')
 const cors       = require('cors')
 const path       = require('path')
 const fs         = require('fs')
+const cookieParser = require('cookie-parser')   // NEW — needed for httpOnly refresh-token cookie
 const connectDB  = require('./config/db')
 
 const authRoutes         = require('./routes/auth.routes')
@@ -15,36 +16,45 @@ const userRoutes         = require('./routes/user.routes')
 const notificationRoutes = require('./routes/notification.routes')
 const groupRoutes        = require('./routes/group.routes')
 const settingsRoutes     = require('./routes/settings.routes')
+const auditRoutes        = require('./routes/audit.routes')          // NEW
 const socketHandler      = require('./socket/socket.handler')
 
-connectDB()
+const { apiLimiter, loginLimiter } = require('./middleware/rateLimiter')  // NEW
+const { startAuditReportJob }      = require('./jobs/auditReport')         // NEW
+
+connectDB().then(() => {
+  startAuditReportJob()   // Start weekly audit cron after DB is ready
+})
 
 const app    = express()
 const server = http.createServer(app)
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+    origin:      process.env.CLIENT_URL,
+    methods:     ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    credentials: true,
   }
 })
 
 socketHandler(io)
 
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }))
+app.use(cookieParser())                                    // NEW — must come before routes
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
-// ── Inject socket.io into every request so controllers can emit events ────
+// ── Inject socket.io into every request ──────────────────────────────────────
 app.set('io', io)
 app.use((req, _res, next) => { req.io = io; next() })
 
-// ── Range-request aware static file handler for /uploads ─────────────────
-// This lets browsers stream audio/video properly instead of downloading
-// the whole file before playing (fixes slow audio on receiver side).
+// ── Rate limiters ─────────────────────────────────────────────────────────────
+app.use('/api/', apiLimiter)                               // NEW — general API limit
+app.use('/api/auth/login', loginLimiter)                   // NEW — stricter login limit
+
+// ── Range-request aware static file handler for /uploads ─────────────────────
 const uploadsDir = path.join(__dirname, 'uploads')
 
-// Handle CORS preflight for /uploads (needed for cross-origin <audio>/<video>)
 app.options('/uploads/:filename', (req, res) => {
   const origin = req.headers.origin || process.env.CLIENT_URL || '*'
   res.set({
@@ -66,21 +76,13 @@ app.get('/uploads/:filename', (req, res) => {
 
   const ext = path.extname(filePath).toLowerCase()
   const mimeMap = {
-    '.webm': 'audio/webm',
-    '.ogg':  'audio/ogg',
-    '.mp3':  'audio/mpeg',
-    '.mp4':  'video/mp4',
-    '.wav':  'audio/wav',
-    '.png':  'image/png',
-    '.jpg':  'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif':  'image/gif',
-    '.webp': 'image/webp',
-    '.pdf':  'application/pdf',
+    '.webm': 'audio/webm', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg',
+    '.mp4': 'video/mp4',   '.wav': 'audio/wav',  '.png': 'image/png',
+    '.jpg': 'image/jpeg',  '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+    '.webp': 'image/webp', '.pdf': 'application/pdf',
   }
   const contentType = mimeMap[ext] || 'application/octet-stream'
 
-  // CORS headers must be set explicitly — res.writeHead() bypasses global cors() middleware.
   const origin = req.headers.origin || process.env.CLIENT_URL || '*'
   const corsHeaders = {
     'Access-Control-Allow-Origin':      origin,
@@ -94,7 +96,6 @@ app.get('/uploads/:filename', (req, res) => {
     const start     = parseInt(parts[0], 10)
     const end       = parts[1] ? parseInt(parts[1], 10) : total - 1
     const chunkSize = end - start + 1
-
     res.writeHead(206, {
       ...corsHeaders,
       'Content-Range':  `bytes ${start}-${end}/${total}`,
@@ -114,6 +115,7 @@ app.get('/uploads/:filename', (req, res) => {
   }
 })
 
+// ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth',          authRoutes)
 app.use('/api/messages',      messageRoutes)
 app.use('/api/rooms',         roomRoutes)
@@ -122,6 +124,7 @@ app.use('/api/users',         userRoutes)
 app.use('/api/notifications', notificationRoutes)
 app.use('/api/groups',        groupRoutes(io))
 app.use('/api/users',         settingsRoutes)
+app.use('/api/audit',         auditRoutes)                // NEW
 
 app.get('/health', (req, res) => res.json({ status: 'OK' }))
 app.use(require('./middleware/error.middleware'))

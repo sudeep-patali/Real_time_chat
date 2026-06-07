@@ -12,6 +12,10 @@ const userSchema = new mongoose.Schema({
   isOnline:     { type: Boolean, default: false },
   lastSeen:     { type: Date, default: Date.now },
 
+  // RSA public key (PEM) for E2E encryption.
+  // The private key is stored only in the user's browser (IndexedDB) and never sent to the server.
+  publicKey:    { type: String, default: null },
+
   // Status
   statusValue:  { type: String, default: 'available' },
   customStatus: { type: String, default: '' },
@@ -34,8 +38,6 @@ const userSchema = new mongoose.Schema({
     mediaShared:  { type: Number, default: 0 },
   },
 
-
-  // Full settings object
   settings: {
     notifications: {
       enabled:        { type: Boolean, default: true },
@@ -71,10 +73,9 @@ const userSchema = new mongoose.Schema({
     }
   },
 
-  // Phase 8.3 — User Actions
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   mutedUsers:   [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  mutedRooms:   [{ type: mongoose.Schema.Types.ObjectId, ref: 'Room'  }]
+  mutedRooms:   [{ type: mongoose.Schema.Types.ObjectId, ref: 'Room'  }],
 
 }, { timestamps: true });
 

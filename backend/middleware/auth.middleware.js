@@ -1,18 +1,24 @@
-const jwt = require('jsonwebtoken');
+const jwt  = require('jsonwebtoken');
 const User = require('../models/User');
 
 const protect = async (req, res, next) => {
   let token;
+
   if (req.headers.authorization?.startsWith('Bearer')) {
     try {
-      token = req.headers.authorization.split(' ')[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.id).select('-password');
-      next();
+      token   = req.headers.authorization.split(' ')[1];
+      const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+      req.user      = await User.findById(decoded.id).select('-password');
+      return next();
     } catch (err) {
-      return res.status(401).json({ message: 'Token invalid or expired' });
+      if (err.name === 'TokenExpiredError') {
+        // Signal the frontend to attempt a silent refresh
+        return res.status(401).json({ message: 'Token expired', code: 'TOKEN_EXPIRED' });
+      }
+      return res.status(401).json({ message: 'Token invalid' });
     }
   }
+
   if (!token) return res.status(401).json({ message: 'No token provided' });
 };
 

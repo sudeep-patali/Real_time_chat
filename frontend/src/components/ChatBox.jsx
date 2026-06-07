@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useChatStore } from '../store/chatStore'
-import MessageBubble from './MessageBubble'
+import MessageBubble    from './MessageBubble'
 import '../styles/chat.css'
 
 function groupByDate(messages) {
@@ -21,6 +21,15 @@ function groupByDate(messages) {
   })
 
   return groups
+}
+
+/**
+ * Returns true if every non-deleted message in the list has encrypted=true.
+ * Used to decide whether to show the E2E banner.
+ */
+function isEncryptedRoom(messages) {
+  const textMsgs = messages.filter(m => !m.isDeleted && m.type === 'text')
+  return textMsgs.length > 0 && textMsgs.every(m => m.encrypted)
 }
 
 function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activeMatchMsgIndex = -1, onEditMessage, onDeleteMessage }) {
@@ -50,7 +59,6 @@ function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activ
   const grouped    = groupByDate(messages)
   let   msgCounter = 0
 
-  // Build typing label text from named map
   const typingLabel = (() => {
     const names = Object.values(typingUserMap || {}).filter(Boolean)
     if (names.length === 0) return null
@@ -59,15 +67,19 @@ function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activ
     return `${names[0]}, ${names[1]} and ${names.length - 2} more are typing…`
   })()
 
-  // Fallback: if no named map but typingUsers present, show generic
-  const showTyping = typingUsers.length > 0
-
-  // FIX Issue 2: normalize currentUserId to a plain string once
-  // so the isOwn === comparison is always string vs string.
-  const currentUserIdStr = currentUserId?.toString?.() ?? String(currentUserId ?? '')
+  const showTyping         = typingUsers.length > 0
+  const currentUserIdStr   = currentUserId?.toString?.() ?? String(currentUserId ?? '')
+  const showEncryptedBanner = isEncryptedRoom(messages)
 
   return (
     <div className='chat-area'>
+
+      {/* ── E2E Encrypted room banner ── */}
+      {showEncryptedBanner && (
+        <div style={styles.encryptedBanner}>
+          🔒 End-to-end encrypted
+        </div>
+      )}
 
       {messages.length === 0 ? (
         <div className='chat-empty'>
@@ -88,8 +100,6 @@ function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activ
           }
 
           const currentMsgIndex = msgCounter++
-          // FIX Issue 2: msg.senderId is already a string (normalizeMessage),
-          // compare with the normalised currentUserIdStr — fully type-safe.
           const msgSenderIdStr  = item.msg.senderId?.toString?.() ?? String(item.msg.senderId ?? '')
           const isOwnMsg        = msgSenderIdStr !== '' && currentUserIdStr !== '' && msgSenderIdStr === currentUserIdStr
           const isActive        = searchQuery && currentMsgIndex === activeMatchMsgIndex
@@ -97,6 +107,11 @@ function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activ
           const isMatch         = q
             ? item.msg.type === 'text' && item.msg.content?.toLowerCase().includes(q)
             : false
+
+          // ── Decrypt-failed fallback ──────────────────────────────────────
+          const msgToRender = item.msg.decryptFailed
+            ? { ...item.msg, content: '⚠ Unable to decrypt' }
+            : item.msg
 
           return (
             <div
@@ -108,7 +123,7 @@ function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activ
               }
             >
               <MessageBubble
-                message={item.msg}
+                message={msgToRender}
                 isOwn={isOwnMsg}
                 searchQuery={searchQuery}
                 isActiveMatch={isActive}
@@ -116,12 +131,20 @@ function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activ
                 onEdit={onEditMessage}
                 onDelete={onDeleteMessage}
               />
+              {/* Lock icon on encrypted messages */}
+              {item.msg.encrypted && !item.msg.decryptFailed && (
+                <span style={styles.lockIcon} title='End-to-end encrypted'>🔒</span>
+              )}
+              {/* Warning badge on decrypt-failed messages */}
+              {item.msg.decryptFailed && (
+                <span style={styles.warnIcon} title='Unable to decrypt — key may have changed'>⚠</span>
+              )}
             </div>
           )
         })
       )}
 
-      {/* ── Phase 12.1 Typing Indicator ── */}
+      {/* ── Typing Indicator ── */}
       {showTyping && (
         <div className='typing-indicator-wrap'>
           <div className='typing-indicator'>
@@ -141,12 +164,35 @@ function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activ
 }
 
 const styles = {
+  encryptedBanner: {
+    textAlign:       'center',
+    fontSize:        12,
+    opacity:         0.7,
+    padding:         '6px 12px',
+    margin:          '8px auto',
+    background:      'var(--color-surface, #f0f0f0)',
+    borderRadius:    20,
+    width:           'fit-content',
+    userSelect:      'none',
+  },
+  lockIcon: {
+    fontSize:   10,
+    opacity:    0.5,
+    alignSelf:  'flex-end',
+    marginBottom: 2,
+  },
+  warnIcon: {
+    fontSize:   12,
+    color:      '#e67e22',
+    alignSelf:  'flex-end',
+    marginBottom: 2,
+  },
   activeMatchWrapper: {
-    borderRadius: 8,
-    outline: '2px solid var(--color-primary)',
+    borderRadius:  8,
+    outline:       '2px solid var(--color-primary)',
     outlineOffset: 2,
-    transition: 'outline 0.2s ease',
-  }
+    transition:    'outline 0.2s ease',
+  },
 }
 
 export default ChatBox
