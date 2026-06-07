@@ -1,0 +1,96 @@
+Folder PATH listing for volume New Volume
+Volume serial number is 00000239 F25C:ECBA
+D:\REAL_TIME_CHAT\FRONTEND\SRC
+¦   App.css
+¦   App.jsx
+¦   index.css
+¦   main.jsx
+¦   
++---assets
+¦       hero.png
+¦       react.svg
+¦       vite.svg
+¦       
++---components
+¦       ChatBox.jsx
+¦       FileUpload.jsx
+¦       MediaPreview.jsx
+¦       MessageBubble.jsx
+¦       MessageInput.jsx
+¦       Navbar.jsx
+¦       NotificationPanel.jsx
+¦       OnlineUsers.jsx
+¦       ProtectedRoute.jsx
+¦       Sidebar.jsx
+¦       Toast.jsx
+¦       
++---config
+¦       api.config.js
+¦       socket.config.js
+¦       
++---context
+¦       SocketContext.jsx
+¦       ThemeContext.jsx
+¦       
++---hooks
+¦       useAuth.js
+¦       useChat.js
+¦       useMediaUpload.js
+¦       useNotification.js
+¦       useSocket.js
+¦       
++---pages
+¦       Chat.jsx
+¦       GroupChat.jsx
+¦       GroupInfo.jsx
+¦       Home.jsx
+¦       Login.jsx
+¦       NotFound.jsx
+¦       Profile.jsx
+¦       Settings.jsx
+¦       Signup.jsx
+¦       UserInfo.jsx
+¦       
++---routes
+¦       AppRoutes.jsx
+¦       
++---services
+¦       authService.js
+¦       groupService.js
+¦       mediaService.js
+¦       messageService.js
+¦       userService.js
+¦       
++---socket
+¦       socket.js
+¦       socketEvents.js
+¦       
++---store
+¦       authStore.js
+¦       chatStore.js
+¦       notificationStore.js
+¦       uiStore.js
+¦       
++---styles
+¦       chat.css
+¦       components.css
+¦       global.css
+¦       layout.css
+¦       navbar.css
+¦       sidebar.css
+¦       
++---types
+¦       message.types.js
+¦       room.types.js
+¦       socket.types.js
+¦       user.types.js
+¦       
++---utils
+¦       constants.js
+¦       formatDate.js
+¦       formatTime.js
+¦       generateAvatar.js
+¦       sanitizeMessage.js
+¦       validateForm.js
+¦       
++---__tests__

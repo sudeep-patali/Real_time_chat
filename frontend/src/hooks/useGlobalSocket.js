@@ -1,0 +1,298 @@
+import { useEffect } from 'react'
+import { useSocket } from './useSocket'
+import { useChatStore } from '../store/chatStore'
+import { useNotificationStore } from '../store/notificationStore'
+import { useAuthStore } from '../store/authStore'
+import { useGroupInviteStore } from '../store/groupInviteStore'
+import * as groupService from '../services/groupService'
+import * as roomService from '../services/roomService'
+import {
+  USER_ONLINE,
+  RECEIVE_MESSAGE,
+  MESSAGE_SENT,
+  RECEIVE_REQUEST,
+  REQUEST_ACCEPTED,
+  REQUEST_REJECTED,
+  NOTIFICATION_NEW,
+  UNREAD_INCREMENT,
+  GROUP_INVITATION,
+  GROUP_INVITATION_ACCEPTED,
+  GROUP_INVITATION_REJECTED,
+  GROUP_MEMBER_REMOVED,
+  GROUP_DELETED,
+  USER_JOINED_GROUP,
+} from '../socket/socketEvents'
+
+export function useGlobalSocket() {
+  const { on, off }       = useSocket()
+  const currentUser       = useAuthStore(state => state.currentUser)
+  const updateUserOnline  = useChatStore(state => state.updateUserOnline)
+  const updateLastMessage = useChatStore(state => state.updateLastMessage)
+  const addPendingRoom    = useChatStore(state => state.addPendingRoom)
+  const moveToAccepted    = useChatStore(state => state.moveToAccepted)
+  const removePendingRoom = useChatStore(state => state.removePendingRoom)
+  const removeRoom        = useChatStore(state => state.removeRoom)
+  const addRoom           = useChatStore(state => state.addRoom)
+  const addNotification   = useNotificationStore(state => state.addNotification)
+  const incrementUnread   = useNotificationStore(state => state.incrementUnread)
+  const activeRoomId      = useChatStore(state => state.activeRoomId)
+  const addInvitation     = useGroupInviteStore(state => state.addInvitation)
+  const removeInvitation  = useGroupInviteStore(state => state.removeInvitation)
+
+  useEffect(() => {
+    // ── FIX Issue 4: Online status ─────────────────────────────────────────
+    // userId from socket may come as ObjectId or string — always toString().
+    const handleUserOnline = ({ userId, isOnline }) => {
+      if (!userId) return
+      updateUserOnline(userId.toString(), isOnline)
+    }
+
+    // ── Incoming messages (sidebar preview + real-time room list) ─────────
+    // Snapshot current rooms/pendingRooms so we can detect unknown rooms.
+    // We read directly from the store (not React state) to avoid stale closure.
+    const handleReceiveMessage = ({ message }) => {
+      if (!message) return
+      const roomId = message.roomId?.toString()
+      if (!roomId) return
+
+      // Update the sidebar last-message preview with all fields (type, fileName
+      // needed for friendly labels like "📷 Photo" instead of raw URLs).
+      updateLastMessage(roomId, {
+        content:   message.content,
+        timestamp: message.timestamp || message.createdAt,
+        type:      message.type     || 'text',
+        fileName:  message.fileName || null,
+      })
+
+      // FIX: "sidebar empty before refresh" — if this room is not yet in the
+      // store (new DM, accepted request, etc.), fetch all rooms from the API
+      // so the sidebar updates immediately without needing a manual refresh.
+      const storeState = useChatStore.getState()
+      const allRooms   = [...storeState.rooms, ...storeState.pendingRooms]
+      const known      = allRooms.some(r => (r.id || r._id)?.toString() === roomId)
+      if (!known) {
+        // Fetch fresh room list and merge into the store
+        roomService.getRooms()
+          .then(res => {
+            const currentUserId = currentUser?.id?.toString()
+            const normalized = (res.data.rooms || []).map(r => normalizeRoomBasic(r, currentUserId))
+            useChatStore.getState().setRooms(normalized)
+          })
+          .catch(() => {})
+        roomService.getRequests()
+          .then(res => {
+            const currentUserId = currentUser?.id?.toString()
+            const normalized = (res.data.requests || []).map(r => normalizeRoomBasic(r, currentUserId))
+            useChatStore.getState().setPendingRooms(normalized)
+          })
+          .catch(() => {})
+      }
+    }
+
+    // ── Sent message acknowledgement (sidebar preview for SENDER) ───────────
+    // The server confirms the sent message — update sidebar preview with
+    // type/fileName so "📷 Photo" shows instead of the raw URL.
+    const handleMessageSent = ({ message }) => {
+      if (!message) return
+      const roomId = message.roomId?.toString()
+      if (!roomId) return
+      updateLastMessage(roomId, {
+        content:   message.content,
+        timestamp: message.timestamp || message.createdAt,
+        type:      message.type     || 'text',
+        fileName:  message.fileName || null,
+      })
+    }
+
+    // ── UNREAD_INCREMENT ───────────────────────────────────────────────────
+    const handleUnreadIncrement = ({ roomId }) => {
+      if (!roomId) return
+      if (roomId !== activeRoomId?.toString()) {
+        incrementUnread(roomId)
+      }
+    }
+
+    // ── FIX Issue 3: DM message requests ──────────────────────────────────
+    // When the RECEIVER gets a new message request, add to their pending list.
+    // When the SENDER gets back the same socket event (via broadcast on the room),
+    // we do NOT want to add it as a pending room for them.  Guard with receiverId.
+    const handleReceiveRequest = ({ roomId, senderId, senderName, isGroup, groupName, receiverId }) => {
+      // Only process for the actual receiver
+      if (receiverId && receiverId?.toString() !== currentUser?.id?.toString()) return
+
+      addPendingRoom({
+        id:             roomId,
+        participantIds: [{ id: senderId?.toString(), _id: senderId?.toString(), name: senderName }],
+        isGroup:        !!isGroup,
+        groupName:      groupName || null,
+        status:         isGroup ? 'accepted' : 'pending',
+        otherUser:      isGroup ? null : { id: senderId?.toString(), name: senderName },
+        lastMessage:    null
+      })
+      addNotification({
+        id:        `req-${Date.now()}`,
+        type:      'request',
+        title:     senderName,
+        body:      'Sent you a message request',
+        timestamp: new Date().toISOString(),
+        isRead:    false,
+        read:      false,
+        avatar:    null
+      })
+    }
+
+    const handleRequestAccepted = ({ roomId }) => moveToAccepted(roomId)
+    const handleRequestRejected = ({ roomId }) => removePendingRoom(roomId)
+
+    const handleNotificationNew = ({ notification, receiverId }) => {
+      if (receiverId?.toString() === currentUser?.id?.toString()) {
+        addNotification(notification)
+      }
+    }
+
+    // ── Group invitation received ──────────────────────────────────────────
+    const handleGroupInvitation = ({ receiverId, invitationId, group, invitedBy, memberCount }) => {
+      if (receiverId?.toString() !== currentUser?.id?.toString()) return
+      addInvitation({
+        id:       invitationId,
+        group:    { ...group, memberCount: memberCount || 0 },
+        invitedBy,
+        createdAt: new Date().toISOString()
+      })
+      addNotification({
+        id:        `grp-inv-${invitationId}`,
+        type:      'request',
+        title:     invitedBy?.name || 'Someone',
+        body:      `invited you to join ${group?.name}`,
+        timestamp: new Date().toISOString(),
+        isRead:    false,
+        read:      false,
+        avatar:    invitedBy?.avatar || null
+      })
+    }
+
+    const handleGroupInvitationAccepted = ({ receiverId, groupId, groupName, acceptedBy }) => {
+      if (receiverId?.toString() !== currentUser?.id?.toString()) return
+      addNotification({
+        id:        `grp-acc-${Date.now()}`,
+        type:      'group',
+        title:     groupName || 'Group',
+        body:      `${acceptedBy?.name} joined the group`,
+        timestamp: new Date().toISOString(),
+        isRead:    false,
+        read:      false,
+        avatar:    null
+      })
+    }
+
+    const handleGroupInvitationRejected = ({ invitationId, receiverId }) => {
+      if (receiverId?.toString() !== currentUser?.id?.toString()) return
+      // No store update needed
+    }
+
+    const handleUserJoinedGroup = async ({ userId, groupId }) => {
+      if (userId?.toString() !== currentUser?.id?.toString()) return
+      try {
+        const res  = await groupService.getGroupById(groupId)
+        const room = res.data.room || res.data
+        if (!room) return
+        const normalised = {
+          ...room,
+          id:             room._id || room.id,
+          isGroup:        true,
+          groupName:      room.groupName,
+          participantIds: (room.participantIds || []).map(p =>
+            typeof p === 'object' ? { ...p, id: p._id || p.id } : p
+          ),
+          lastMessage:    room.lastMessage
+            ? {
+                content:    room.lastMessage.content || '',
+                timestamp:  room.lastMessage.createdAt || room.lastMessage.timestamp,
+                senderName: room.lastMessage.senderId?.name || ''
+              }
+            : null
+        }
+        addRoom(normalised)
+      } catch (err) {
+        console.error('handleUserJoinedGroup fetch error:', err)
+      }
+    }
+
+    const handleGroupMemberRemoved = ({ groupId, removedUserId }) => {
+      if (removedUserId?.toString() !== currentUser?.id?.toString()) return
+      removeRoom(groupId)
+    }
+
+    const handleGroupDeleted = ({ groupId }) => {
+      removeRoom(groupId)
+    }
+
+    on(USER_ONLINE,                handleUserOnline)
+    on(RECEIVE_MESSAGE,            handleReceiveMessage)
+    on(MESSAGE_SENT,               handleMessageSent)
+    on(UNREAD_INCREMENT,           handleUnreadIncrement)
+    on(RECEIVE_REQUEST,            handleReceiveRequest)
+    on(REQUEST_ACCEPTED,           handleRequestAccepted)
+    on(REQUEST_REJECTED,           handleRequestRejected)
+    on(NOTIFICATION_NEW,           handleNotificationNew)
+    on(GROUP_INVITATION,           handleGroupInvitation)
+    on(GROUP_INVITATION_ACCEPTED,  handleGroupInvitationAccepted)
+    on(GROUP_INVITATION_REJECTED,  handleGroupInvitationRejected)
+    on(USER_JOINED_GROUP,          handleUserJoinedGroup)
+    on(GROUP_MEMBER_REMOVED,       handleGroupMemberRemoved)
+    on(GROUP_DELETED,              handleGroupDeleted)
+
+    return () => {
+      off(USER_ONLINE,               handleUserOnline)
+      off(RECEIVE_MESSAGE,           handleReceiveMessage)
+      off(MESSAGE_SENT,              handleMessageSent)
+      off(UNREAD_INCREMENT,          handleUnreadIncrement)
+      off(RECEIVE_REQUEST,           handleReceiveRequest)
+      off(REQUEST_ACCEPTED,          handleRequestAccepted)
+      off(REQUEST_REJECTED,          handleRequestRejected)
+      off(NOTIFICATION_NEW,          handleNotificationNew)
+      off(GROUP_INVITATION,          handleGroupInvitation)
+      off(GROUP_INVITATION_ACCEPTED, handleGroupInvitationAccepted)
+      off(GROUP_INVITATION_REJECTED, handleGroupInvitationRejected)
+      off(USER_JOINED_GROUP,         handleUserJoinedGroup)
+      off(GROUP_MEMBER_REMOVED,      handleGroupMemberRemoved)
+      off(GROUP_DELETED,             handleGroupDeleted)
+    }
+  }, [currentUser, activeRoomId])
+}
+
+// Minimal room normalizer for real-time sidebar updates.
+// Derives otherUser from participantIds so the sidebar shows names immediately.
+function normalizeRoomBasic(room, currentUserId) {
+  const participants = (room.participantIds || []).map(p =>
+    typeof p === 'object'
+      ? { ...p, id: (p._id || p.id)?.toString(), _id: (p._id || p.id)?.toString() }
+      : { id: p?.toString(), _id: p?.toString() }
+  )
+  let otherUser = room.otherUser || null
+  if (!room.isGroup && currentUserId && !otherUser?.name) {
+    const other = participants.find(p => p.id && p.id !== currentUserId)
+    if (other?.name) {
+      otherUser = { id: other.id, _id: other._id, name: other.name, avatar: other.avatar || null }
+    }
+  }
+  return {
+    ...room,
+    id:             (room.id || room._id)?.toString(),
+    _id:            (room.id || room._id)?.toString(),
+    participantIds: participants,
+    otherUser,
+    requestedBy:    room.requestedBy
+      ? (room.requestedBy?._id || room.requestedBy?.id || room.requestedBy)?.toString()
+      : null,
+    lastMessage: room.lastMessage
+      ? {
+          content:    room.lastMessage.content   || '',
+          timestamp:  room.lastMessage.createdAt || room.lastMessage.timestamp,
+          senderName: room.lastMessage.senderId?.name || '',
+          type:       room.lastMessage.type      || 'text',
+          fileName:   room.lastMessage.fileName  || null,
+        }
+      : null,
+  }
+}

@@ -1,0 +1,105 @@
+/* ═══════════════════════════════════════
+   LAYOUT — WhatsApp Web shell
+═══════════════════════════════════════ */
+
+/* ── App Shell ── */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--color-bg);
+}
+
+/* ── Main Layout (Sidebar + Content) ── */
+/* WhatsApp has no top navbar on desktop — the shell IS the main layout */
+.main-layout {
+  display: flex;
+  flex: 1;
+  height: 100vh;   /* full height since navbar is hidden on desktop */
+  overflow: hidden;
+}
+
+/* ── Sidebar ── */
+/* Width controlled in sidebar.css (360px).
+   layout.css just ensures the flex relationship is correct. */
+.sidebar {
+  flex-shrink: 0;
+  height: 100%;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  transition: transform 0.3s ease;
+}
+
+/* ── Main Content (chat area) ── */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--color-surface-3);
+}
+
+/* ── Mobile Layout ── */
+@media (max-width: 768px) {
+  .main-layout {
+    height: calc(100vh - 56px);  /* account for mobile navbar */
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 100;
+    transform: translateX(-100%);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+    backdrop-filter: blur(2px);
+  }
+
+  .sidebar-overlay.visible {
+    display: block;
+  }
+}
+
+/* ── Chat Area (used in layout context) ── */
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Message Input Bar ── */
+.input-bar {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-header-bg);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  .input-bar {
+    padding: 6px 10px;
+  }
+
+  .chat-area {
+    padding: 8px;
+  }
+}

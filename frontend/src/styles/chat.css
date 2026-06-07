@@ -1,0 +1,762 @@
+/* ═══════════════════════════════════════
+   CHAT — WhatsApp Web style
+═══════════════════════════════════════ */
+
+/* ── Chat page shell ── */
+.chat-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--color-surface-3);
+}
+
+/* ── Chat Header ── */
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background-color: var(--color-header-bg);
+  border-bottom: 1px solid var(--color-border);
+  min-height: 59px;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.chat-header:hover {
+  background-color: var(--color-surface-2);
+}
+
+.chat-header-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.chat-header-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.chat-header-online-dot {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  width: 11px;
+  height: 11px;
+  background: var(--color-online);
+  border-radius: 50%;
+  border: 2px solid var(--color-header-bg);
+}
+
+.chat-header-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.chat-header-name {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-header-status {
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-header-status.offline {
+  color: var(--color-text-dim);
+}
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.chat-header-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 20px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.chat-header-icon:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+/* ── Chat wallpaper / area ── */
+.chat-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 8% 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background-color: var(--color-surface-3);
+}
+
+/* Subtle WhatsApp-style bg pattern overlay */
+.chat-area::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  z-index: 0;
+}
+
+.chat-area > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Date divider ── */
+.chat-date-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 10px 0 6px;
+}
+
+.chat-date-divider span {
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 4px 12px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  letter-spacing: 0.3px;
+}
+
+/* ── Empty chat ── */
+.chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--color-text-dim);
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-xl);
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+
+.chat-empty-icon {
+  font-size: 36px;
+  opacity: 0.35;
+  margin-bottom: 4px;
+}
+
+/* ══════════════════════════════════════
+   MESSAGE BUBBLES
+══════════════════════════════════════ */
+
+.bubble-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: 65%;
+  margin-bottom: 2px;
+  position: relative;
+}
+
+/* Group consecutive messages closer */
+.bubble-wrapper + .bubble-wrapper {
+  margin-top: 1px;
+}
+
+.bubble-wrapper.own {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+  max-width: 65%;
+}
+
+.bubble-wrapper.other {
+  align-self: flex-start;
+}
+
+/* Avatar beside other's messages */
+.bubble-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-bottom: 2px;
+  object-fit: cover;
+}
+
+/* Hide avatar for consecutive messages from same sender */
+.bubble-avatar.hidden {
+  visibility: hidden;
+}
+
+/* ── The bubble itself ── */
+.bubble {
+  padding: 6px 10px 8px 10px;
+  border-radius: 7.5px;
+  max-width: 100%;
+  word-break: break-word;
+  position: relative;
+  box-shadow: var(--shadow-sm);
+  line-height: 1.45;
+}
+
+/* ── Sent bubble (own) ── */
+.bubble.own {
+  background: var(--color-bubble-out);
+  color: var(--color-text);
+  border-top-right-radius: 2px;
+}
+
+/* Tail for sent bubble */
+.bubble.own::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 9px 9px;
+  border-color: transparent transparent transparent var(--color-bubble-out);
+}
+
+/* ── Received bubble (other) ── */
+.bubble.other {
+  background: var(--color-bubble-in);
+  color: var(--color-text);
+  border-top-left-radius: 2px;
+}
+
+/* Tail for received bubble */
+.bubble.other::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 9px 9px 0;
+  border-color: transparent var(--color-bubble-in) transparent transparent;
+}
+
+/* ── Sender name (group chats) ── */
+.bubble-sender {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: 3px;
+  display: block;
+}
+
+/* ── Message content ── */
+.bubble-content {
+  font-size: var(--font-size-base);
+  line-height: 1.45;
+  display: inline;
+  /* leave room for the timestamp to float right */
+  margin-right: 52px;
+}
+
+/* ── Image in bubble ── */
+.bubble-image {
+  max-width: 280px;
+  width: 100%;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  display: block;
+}
+
+/* ── Timestamp + status — inside the bubble ── */
+.bubble-meta {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  float: right;
+  margin-left: 8px;
+  margin-top: -2px;    /* pull up to sit on same line as last text */
+  position: relative;
+  bottom: -2px;
+}
+
+.bubble-time {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.bubble.own .bubble-time {
+  color: var(--color-text-dim);
+}
+
+/* Read receipt tick */
+.bubble-tick {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--color-text-dim);
+}
+
+.bubble-tick.read {
+  color: #53bdeb;  /* WhatsApp blue ticks */
+}
+
+/* Clearfix so float doesn't collapse parent */
+.bubble::after,
+.bubble-content-wrap::after {
+  content: '';
+  display: table;
+  clear: both;
+}
+
+/* Override the tail pseudo-element — use a separate element for clearfix */
+.bubble-tail-own::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 9px 9px;
+  border-color: transparent transparent transparent var(--color-bubble-out);
+  display: block;
+  clear: none;
+}
+
+/* ── Typing indicator ── */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+  background: var(--color-bubble-in);
+  border-radius: 7.5px;
+  border-top-left-radius: 2px;
+  width: fit-content;
+  margin-left: 36px;
+  margin-top: 4px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  z-index: 1;
+}
+
+/* Tail on typing indicator */
+.typing-indicator::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 9px 9px 0;
+  border-color: transparent var(--color-bubble-in) transparent transparent;
+}
+
+.typing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-text-dim);
+  animation: typingBounce 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) { animation-delay: 0s;    }
+.typing-dot:nth-child(2) { animation-delay: 0.2s;  }
+.typing-dot:nth-child(3) { animation-delay: 0.4s;  }
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0);    opacity: 0.4; }
+  30%           { transform: translateY(-5px); opacity: 1;   }
+}
+
+/* ══════════════════════════════════════
+   INPUT BAR
+══════════════════════════════════════ */
+
+.input-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 16px 10px;
+  background: var(--color-header-bg);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+/* Left icon cluster */
+.input-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* The text input pill */
+.input-pill {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  background: var(--color-input-bg);
+  border-radius: 24px;
+  padding: 9px 14px;
+  min-height: 42px;
+  border: none;
+  box-shadow: none;
+  transition: background var(--transition-fast);
+}
+
+.input-pill:focus-within {
+  background: var(--color-surface-2);
+}
+
+.input-pill input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+  line-height: 1.4;
+  padding: 0;
+}
+
+.input-pill input::placeholder {
+  color: var(--color-text-dim);
+}
+
+/* Emoji button inside pill */
+.emoji-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-dim);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 8px 0 0;
+  transition: color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.emoji-btn:hover {
+  color: var(--color-text-muted);
+}
+
+/* Attach button */
+.attach-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-dim);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.attach-btn:hover {
+  color: var(--color-text-muted);
+  background: var(--color-surface-2);
+}
+
+/* Send / mic button */
+.send-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.send-btn:hover {
+  background: var(--color-primary-hover);
+  transform: scale(1.05);
+}
+
+.send-btn:active {
+  transform: scale(0.96);
+}
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+  .chat-area {
+    padding: 8px 4% 8px;
+  }
+
+  .bubble-wrapper,
+  .bubble-wrapper.own {
+    max-width: 85%;
+  }
+
+  .chat-header {
+    padding: 8px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .bubble-wrapper,
+  .bubble-wrapper.own {
+    max-width: 90%;
+  }
+
+  .input-bar {
+    padding: 6px 10px 8px;
+  }
+}
+/* ══════════════════════════════════════
+   CHAT SEARCH
+══════════════════════════════════════ */
+
+/* Highlight mark inside bubbles */
+mark.search-highlight {
+  background: #f5a623;
+  color: #111;
+  border-radius: 2px;
+  padding: 0 1px;
+  font-style: normal;
+}
+
+/* Active match gets a brighter highlight */
+.active-match mark.search-highlight {
+  background: #ff8c00;
+  box-shadow: 0 0 0 1px #ff8c00;
+}
+
+/* Non-matching bubbles fade slightly when a search is active */
+.bubble-wrapper.search-dim {
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.bubble-wrapper.search-dim:hover {
+  opacity: 0.75;
+}
+
+/* Search bar */
+.chat-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background-color: var(--color-header-bg);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  animation: searchSlideDown 0.15s ease;
+}
+
+@keyframes searchSlideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+.chat-search-pill {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-input-bg);
+  border-radius: 20px;
+  padding: 7px 14px;
+  min-height: 36px;
+}
+
+.chat-search-pill input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.chat-search-pill input::placeholder {
+  color: var(--color-text-dim);
+}
+
+.chat-search-count {
+  font-size: 12px;
+  color: var(--color-text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chat-search-nav-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.chat-search-nav-btn:hover:not(:disabled) {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.chat-search-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.chat-search-close-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--color-text-muted);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.chat-search-close-btn:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+/* Active match ring (applied to the wrapper div in ChatBox) */
+.search-active-match {
+  border-radius: 8px;
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  transition: outline 0.2s ease;
+}
+/* ═══════════════════════════════════════
+   PHASE 12.1 – TYPING INDICATORS
+═══════════════════════════════════════ */
+
+.typing-indicator-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 8px;
+  align-self: flex-start;
+  animation: fadeSlideIn 0.18s ease;
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-bubble-other, var(--color-surface-2));
+  border-radius: 14px;
+  padding: 8px 12px;
+  min-width: 48px;
+}
+
+.typing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  animation: typingBounce 1.4s infinite ease-in-out;
+  flex-shrink: 0;
+}
+
+.typing-dot:nth-child(1) { animation-delay: 0s; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30%           { transform: translateY(-5px); opacity: 1; }
+}
+
+/* Named typing label — "Alice is typing…" */
+.typing-label {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* ═══════════════════════════════════════
+   PHASE 12.1 – EMOJI PICKER POSITIONING
+═══════════════════════════════════════ */
+
+/* Prevent emoji picker from overflowing on small screens */
+@media (max-width: 500px) {
+  .emoji-picker-wrap {
+    left: 8px !important;
+    right: 8px;
+    width: auto !important;
+  }
+}
+
+/* ═══════════════════════════════════════
+   PHASE 12.1 – GIF / MEDIA ENHANCEMENTS
+═══════════════════════════════════════ */
+
+/* Shared media bubble image sizing */
+.bubble-image {
+  max-width: 260px;
+  max-height: 260px;
+  border-radius: 8px;
+  display: block;
+  object-fit: cover;
+}
+
+/* Larger gif / image bubbles on wider screens */
+@media (min-width: 768px) {
+  .bubble-image {
+    max-width: 320px;
+    max-height: 320px;
+  }
+}
+/* ── Skeleton shimmer for header loading state ── */
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
