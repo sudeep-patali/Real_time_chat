@@ -21,12 +21,14 @@ import {
   GROUP_MEMBER_REMOVED,
   GROUP_DELETED,
   USER_JOINED_GROUP,
+  USER_PROFILE_UPDATED,
 } from '../socket/socketEvents'
 
 export function useGlobalSocket() {
   const { on, off }       = useSocket()
   const currentUser       = useAuthStore(state => state.currentUser)
   const updateUserOnline  = useChatStore(state => state.updateUserOnline)
+  const updateUserProfile = useChatStore(state => state.updateUserProfile)
   const updateLastMessage = useChatStore(state => state.updateLastMessage)
   const addPendingRoom    = useChatStore(state => state.addPendingRoom)
   const moveToAccepted    = useChatStore(state => state.moveToAccepted)
@@ -200,6 +202,10 @@ export function useGlobalSocket() {
 
     const handleGroupDeleted = ({ groupId }) => { removeRoom(groupId) }
 
+    const handleUserProfileUpdated = ({ userId, name, avatar, username, statusValue, customStatus }) => {
+      updateUserProfile(userId, { name, avatar, username, statusValue, customStatus })
+    }
+
     on(USER_ONLINE,                handleUserOnline)
     on(RECEIVE_MESSAGE,            handleReceiveMessage)
     on(MESSAGE_SENT,               handleMessageSent)
@@ -213,6 +219,7 @@ export function useGlobalSocket() {
     on(GROUP_INVITATION_REJECTED,  handleGroupInvitationRejected)
     on(USER_JOINED_GROUP,          handleUserJoinedGroup)
     on(GROUP_MEMBER_REMOVED,       handleGroupMemberRemoved)
+    on(USER_PROFILE_UPDATED,       handleUserProfileUpdated)
     on(GROUP_DELETED,              handleGroupDeleted)
 
     return () => {
@@ -229,6 +236,7 @@ export function useGlobalSocket() {
       off(GROUP_INVITATION_REJECTED, handleGroupInvitationRejected)
       off(USER_JOINED_GROUP,         handleUserJoinedGroup)
       off(GROUP_MEMBER_REMOVED,      handleGroupMemberRemoved)
+      off(USER_PROFILE_UPDATED,      handleUserProfileUpdated)
       off(GROUP_DELETED,             handleGroupDeleted)
     }
   }, [currentUser, activeRoomId])

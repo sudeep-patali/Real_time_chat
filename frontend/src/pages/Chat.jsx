@@ -260,6 +260,10 @@ function Chat() {
   const displayName = getDisplayName()
   // While loading, show neutral initials instead of "?" for "Chat"
   const initials    = displayName ? displayName.slice(0, 2).toUpperCase() : '…'
+  // Resolve avatar for the chat header
+  const headerAvatar = room?.isGroup
+    ? (room.groupAvatar || room.avatarUrl || null)
+    : (room?.otherUser?.avatar || null)
   // Only show senderName banner for the RECEIVER (isPending is already false for sender)
   const senderName  = isPending ? (room?.otherUser?.name || 'Someone') : null
 
@@ -286,10 +290,12 @@ function Chat() {
               <div className='chat-header-avatar' style={{
                 background: '#5b8def', display: 'flex', alignItems: 'center',
                 justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 15,
+                overflow: 'hidden', padding: 0,
               }}>
                 {roomLoading && !displayName ? (
-                  // Subtle pulse while loading — avoids "Chat" flash
                   <span style={{ opacity: 0.4, fontSize: 18 }}>…</span>
+                ) : headerAvatar ? (
+                  <img src={headerAvatar} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
                 ) : initials}
               </div>
               {isOnline && <span className='chat-header-online-dot' />}

@@ -49,6 +49,9 @@ export const NOTIFICATION_READ_ALL = 'notification:read_all'
 // Unread count management
 export const UNREAD_INCREMENT   = 'unread_increment'
 
+// Profile updates
+export const USER_PROFILE_UPDATED = 'user_profile_updated'
+
 // Group management
 export const GROUP_INVITATION          = 'group-invitation'
 export const GROUP_INVITATION_ACCEPTED = 'group-invitation-accepted'

@@ -114,22 +114,36 @@ exports.updateProfile = async (req, res, next) => {
       { new: true, runValidators: true }
     ).select('-password');
 
-    res.json({
-      user: {
-        id:           user._id,
-        name:         user.name,
-        email:        user.email,
-        avatar:       user.avatar,
-        bio:          user.bio,
-        role:         user.role,
-        username:     user.username,
-        statusValue:  user.statusValue,
+    const payload = {
+      id:           user._id,
+      name:         user.name,
+      email:        user.email,
+      avatar:       user.avatar,
+      bio:          user.bio,
+      role:         user.role,
+      username:     user.username,
+      statusValue:  user.statusValue,
+      customStatus: user.customStatus,
+      isOnline:     user.isOnline,
+      lastSeen:     user.lastSeen,
+      createdAt:    user.createdAt,
+    };
+
+    // Broadcast profile change to all connected clients so
+    // other users see the updated avatar/name in real time
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('user_profile_updated', {
+        userId: user._id.toString(),
+        name:   user.name,
+        avatar: user.avatar,
+        username: user.username,
+        statusValue: user.statusValue,
         customStatus: user.customStatus,
-        isOnline:     user.isOnline,
-        lastSeen:     user.lastSeen,
-        createdAt:    user.createdAt,
-      }
-    });
+      });
+    }
+
+    res.json({ user: payload });
   } catch (err) { next(err); }
 };
 

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useAuthStore } from '../store/authStore'
 import { generateAvatar } from '../utils/generateAvatar'
@@ -128,6 +129,7 @@ function PrivacyRow({ icon, label, value, onChange }) {
 function Profile() {
   const { currentUser } = useAuth()
   const setUser = useAuthStore(state => state.setUser)
+  const navigate = useNavigate()
 
   const [activeTab, setActiveTab] = useState('Profile')
   const [loading, setLoading]     = useState(true)
@@ -139,9 +141,13 @@ function Profile() {
   const [statusValue, setStatusValue]   = useState('available')
   const [customStatus, setCustomStatus] = useState('')
   const [editing, setEditing]       = useState(false)
+  const [editingStatus, setEditingStatus] = useState(false)
   const [saving, setSaving]         = useState(false)
+  const [savingStatus, setSavingStatus] = useState(false)
   const [saveError, setSaveError]   = useState(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
+  const [saveStatusError, setSaveStatusError]   = useState(null)
+  const [saveStatusSuccess, setSaveStatusSuccess] = useState(false)
 
   // Avatar
   const [showAvatarModal, setShowAvatarModal] = useState(false)
@@ -234,8 +240,7 @@ function Profile() {
     return formatDate(d)
   }
 
-  // ── Save profile ──
-  // ── Save profile (text fields only — avatar sent separately) ──
+  // ── Save personal info (name, bio, username) ──
   const handleSave = async () => {
     setSaving(true); setSaveError(null); setSaveSuccess(false)
     try {
@@ -243,8 +248,6 @@ function Profile() {
         name: name.trim(),
         bio: bio.trim(),
         username: username.trim(),
-        statusValue,
-        customStatus: statusValue === 'custom' ? customStatus : '',
       })
       setUser(res.data.user)
       setEditing(false); setSaveSuccess(true)
@@ -252,6 +255,22 @@ function Profile() {
     } catch (err) {
       setSaveError(err.response?.data?.message || 'Failed to save. Try again.')
     } finally { setSaving(false) }
+  }
+
+  // ── Save status message only ──
+  const handleStatusSave = async () => {
+    setSavingStatus(true); setSaveStatusError(null); setSaveStatusSuccess(false)
+    try {
+      const res = await userService.updateProfile({
+        statusValue,
+        customStatus: statusValue === 'custom' ? customStatus : '',
+      })
+      setUser(res.data.user)
+      setEditingStatus(false); setSaveStatusSuccess(true)
+      setTimeout(() => setSaveStatusSuccess(false), 3000)
+    } catch (err) {
+      setSaveStatusError(err.response?.data?.message || 'Failed to save status.')
+    } finally { setSavingStatus(false) }
   }
 
   // ── Avatar save (dedicated call, never mixed with text profile save) ──
@@ -306,6 +325,10 @@ function Profile() {
       <Navbar />
 
       <div className='profile-page'>
+        {/* ── Back Button ── */}
+        <button className='profile-back-btn' onClick={() => navigate(-1)}>
+          ← Back
+        </button>
         {/* ── Hero ── */}
         <div className='profile-hero'>
           <div className='profile-hero-bg' />
@@ -390,7 +413,6 @@ function Profile() {
         {/* ── Body ── */}
         <div className='profile-body'>
 
-          {/* PROFILE TAB */}
           {activeTab === 'Profile' && (
             <div className='tab-panel'>
               {saveError   && <div className='alert error'>{saveError}</div>}
@@ -441,11 +463,30 @@ function Profile() {
                         </p>}
                   </div>
                 </div>
+
+                {editing && (
+                  <div className='profile-actions'>
+                    <button className='btn-primary' onClick={handleSave} disabled={saving}>
+                      {saving ? <><span className='spinner' /> Saving…</> : '✓ Save Changes'}
+                    </button>
+                    <button className='btn-ghost' onClick={() => {
+                      setEditing(false); setSaveError(null)
+                      setName(currentUser?.name || ''); setBio(currentUser?.bio || '')
+                      setUsername(currentUser?.username || currentUser?.email?.split('@')[0] || '')
+                    }}>Cancel</button>
+                  </div>
+                )}
               </div>
+
+              {saveStatusError   && <div className='alert error'>{saveStatusError}</div>}
+              {saveStatusSuccess && <div className='alert success'>✓ Status saved!</div>}
 
               <div className='info-card'>
                 <div className='card-header'>
                   <span className='card-title'>Status Message</span>
+                  {!editingStatus && (
+                    <button className='card-edit-btn' onClick={() => setEditingStatus(true)}>✏️ Edit</button>
+                  )}
                 </div>
 
                 <div className='status-grid'>
@@ -453,8 +494,8 @@ function Profile() {
                     <button
                       key={s.value}
                       className={`status-chip ${statusValue === s.value ? 'active' : ''}`}
-                      onClick={() => { if (editing) setStatusValue(s.value) }}
-                      disabled={!editing}
+                      onClick={() => { if (editingStatus) setStatusValue(s.value) }}
+                      disabled={!editingStatus}
                     >
                       <span>{s.icon}</span>
                       <span>{s.label}</span>
@@ -462,32 +503,32 @@ function Profile() {
                   ))}
                 </div>
 
-                {editing && statusValue === 'custom' && (
+                {editingStatus && statusValue === 'custom' && (
                   <input className='field-input mt-12' value={customStatus}
                     onChange={e => setCustomStatus(e.target.value)}
                     placeholder='Type your custom status…' maxLength={60} />
                 )}
 
-                {!editing && (
+                {!editingStatus && (
                   <div className='current-status-display'>
                     <span>{getStatusIcon()}</span>
                     <span>{getStatusLabel()}</span>
                   </div>
                 )}
-              </div>
 
-              {editing && (
-                <div className='profile-actions'>
-                  <button className='btn-primary' onClick={handleSave} disabled={saving}>
-                    {saving ? <><span className='spinner' /> Saving…</> : '✓ Save Changes'}
-                  </button>
-                  <button className='btn-ghost' onClick={() => {
-                    setEditing(false); setSaveError(null)
-                    setName(currentUser?.name || ''); setBio(currentUser?.bio || '')
-                    setStatusValue(currentUser?.statusValue || 'available')
-                  }}>Cancel</button>
-                </div>
-              )}
+                {editingStatus && (
+                  <div className='profile-actions'>
+                    <button className='btn-primary' onClick={handleStatusSave} disabled={savingStatus}>
+                      {savingStatus ? <><span className='spinner' /> Saving…</> : '✓ Save Status'}
+                    </button>
+                    <button className='btn-ghost' onClick={() => {
+                      setEditingStatus(false); setSaveStatusError(null)
+                      setStatusValue(currentUser?.statusValue || 'available')
+                      setCustomStatus(currentUser?.customStatus || '')
+                    }}>Cancel</button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

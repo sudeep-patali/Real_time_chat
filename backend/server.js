@@ -35,12 +35,26 @@ app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // ── Inject socket.io into every request so controllers can emit events ────
+app.set('io', io)
 app.use((req, _res, next) => { req.io = io; next() })
 
 // ── Range-request aware static file handler for /uploads ─────────────────
 // This lets browsers stream audio/video properly instead of downloading
 // the whole file before playing (fixes slow audio on receiver side).
 const uploadsDir = path.join(__dirname, 'uploads')
+
+// Handle CORS preflight for /uploads (needed for cross-origin <audio>/<video>)
+app.options('/uploads/:filename', (req, res) => {
+  const origin = req.headers.origin || process.env.CLIENT_URL || '*'
+  res.set({
+    'Access-Control-Allow-Origin':      origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods':     'GET, OPTIONS',
+    'Access-Control-Allow-Headers':     'Range, Authorization',
+    'Access-Control-Expose-Headers':    'Content-Range, Content-Length, Accept-Ranges',
+  }).sendStatus(204)
+})
+
 app.get('/uploads/:filename', (req, res) => {
   const filePath = path.join(uploadsDir, req.params.filename)
   if (!fs.existsSync(filePath)) return res.status(404).end()
@@ -52,8 +66,8 @@ app.get('/uploads/:filename', (req, res) => {
   // Determine content-type from extension
   const ext = path.extname(filePath).toLowerCase()
   const mimeMap = {
-    '.webm': 'audio/webm',
-    '.ogg':  'audio/ogg',
+    '.webm': 'audio/webm;codecs=opus',
+    '.ogg':  'audio/ogg;codecs=opus',
     '.mp3':  'audio/mpeg',
     '.mp4':  'video/mp4',
     '.wav':  'audio/wav',
@@ -66,14 +80,26 @@ app.get('/uploads/:filename', (req, res) => {
   }
   const contentType = mimeMap[ext] || 'application/octet-stream'
 
+  // CORS headers — required so <audio>/<video> elements can load
+  // cross-origin files (frontend on :5173, backend on :5000).
+  // res.writeHead() replaces ALL headers so we must include these
+  // explicitly; the global cors() middleware is bypassed here.
+  const origin = req.headers.origin || process.env.CLIENT_URL || '*'
+  const corsHeaders = {
+    'Access-Control-Allow-Origin':      origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Headers':     'Range, Authorization',
+    'Access-Control-Expose-Headers':    'Content-Range, Content-Length, Accept-Ranges',
+  }
+
   if (range) {
-    // Parse Range header e.g. "bytes=0-"
     const parts = range.replace(/bytes=/, '').split('-')
     const start = parseInt(parts[0], 10)
     const end   = parts[1] ? parseInt(parts[1], 10) : total - 1
     const chunkSize = end - start + 1
 
     res.writeHead(206, {
+      ...corsHeaders,
       'Content-Range':  `bytes ${start}-${end}/${total}`,
       'Accept-Ranges':  'bytes',
       'Content-Length': chunkSize,
@@ -82,6 +108,7 @@ app.get('/uploads/:filename', (req, res) => {
     fs.createReadStream(filePath, { start, end }).pipe(res)
   } else {
     res.writeHead(200, {
+      ...corsHeaders,
       'Accept-Ranges':  'bytes',
       'Content-Length': total,
       'Content-Type':   contentType,

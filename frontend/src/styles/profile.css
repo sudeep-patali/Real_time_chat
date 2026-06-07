@@ -13,14 +13,32 @@
 
 .profile-page {
   flex: 1;
-  max-width: 720px;
+  max-width: 900px;
   width: 100%;
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: 16px 24px 48px;
   display: flex;
   flex-direction: column;
   gap: 0;
 }
+
+/* ── Back Button ────────────────────────────────────────────── */
+.profile-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: 16px;
+  padding: 10px 0;
+  margin-bottom: 10px;
+  transition: opacity 0.15s;
+}
+
+.profile-back-btn:hover { opacity: 0.75; }
 
 /* ── Hero Header ───────────────────────────────────────────── */
 .profile-hero {
@@ -129,6 +147,8 @@
   font-size: 13px;
   color: var(--color-text-muted);
   margin: 0 0 8px;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .profile-hero-status {
@@ -1001,7 +1021,9 @@
 
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 600px) {
-  .profile-page { padding: 0 0 40px; }
+  .profile-page { padding: 12px 0 40px; }
+
+  .profile-back-btn { padding: 8px 16px; }
 
   .profile-hero { border-radius: 0; border-left: none; border-right: none; border-top: none; }
 

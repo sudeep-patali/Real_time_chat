@@ -100,17 +100,24 @@ module.exports = (io) => {
           // Mark this user as delivered in the group
           await Message.findByIdAndUpdate(msg._id, {
             $addToSet: { deliveredTo: socket.user._id },
-            $set:      { [`memberStatuses.$[elem].deliveredAt`]: now }
-          }, {
-            arrayFilters: [{ 'elem.userId': socket.user._id }]
           })
 
-          // Also ensure memberStatuses entry exists (upsert style)
+          // Safely upsert memberStatuses entry — avoids BadValue on old docs missing the field
           const msgDoc = await Message.findById(msg._id)
-          if (!msgDoc.memberStatuses.find(ms => ms.userId.toString() === socket.user._id.toString())) {
-            msgDoc.memberStatuses.push({ userId: socket.user._id, deliveredAt: now })
-            await msgDoc.save()
+          if (!msgDoc) continue
+          // Ensure memberStatuses array exists on the document
+          if (!Array.isArray(msgDoc.memberStatuses)) {
+            msgDoc.memberStatuses = []
           }
+          const existing = msgDoc.memberStatuses.find(
+            ms => ms.userId && ms.userId.toString() === socket.user._id.toString()
+          )
+          if (existing) {
+            if (!existing.deliveredAt) existing.deliveredAt = now
+          } else {
+            msgDoc.memberStatuses.push({ userId: socket.user._id, deliveredAt: now })
+          }
+          await msgDoc.save()
 
           // Re-fetch to compute new aggregate status
           const updated = await Message.findById(msg._id).populate('roomId', 'isGroup participantIds')

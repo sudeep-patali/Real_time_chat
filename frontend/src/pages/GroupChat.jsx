@@ -36,6 +36,7 @@ function GroupChat() {
     .join(', ')
 
   const initials = groupName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  const groupAvatar = room?.groupAvatar || room?.avatarUrl || null
 
   // ── Search helpers ──
   const matchingIndices = useCallback(() => {
@@ -90,8 +91,11 @@ function GroupChat() {
               <div className='chat-header-avatar' style={{
                 background: '#7c6ef7', display: 'flex', alignItems: 'center',
                 justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 15,
+                overflow: 'hidden', padding: 0,
               }}>
-                {initials}
+                {groupAvatar
+                  ? <img src={groupAvatar} alt={groupName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
+                  : initials}
               </div>
             </div>
 

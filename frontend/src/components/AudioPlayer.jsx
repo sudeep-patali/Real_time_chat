@@ -12,7 +12,7 @@ const fmt = (secs) => {
  * Uses a real <audio> element (not new Audio()) so the browser can
  * stream range requests and report duration on loadedmetadata.
  */
-function AudioPlayer({ src, totalDuration = 0 }) {
+function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
   const [playing,     setPlaying]     = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration,    setDuration]    = useState(totalDuration || 0)
@@ -59,7 +59,15 @@ function AudioPlayer({ src, totalDuration = 0 }) {
       audio.pause()
       setPlaying(false)
     } else {
-      audio.play().then(() => setPlaying(true)).catch(() => {})
+      // Reload if audio errored (e.g. after crossOrigin retry)
+      if (audio.error) {
+        audio.load()
+      }
+      audio.play()
+        .then(() => setPlaying(true))
+        .catch((err) => {
+          console.error('Audio play failed:', err.message, 'src:', audio.src)
+        })
     }
   }
 
@@ -79,13 +87,25 @@ function AudioPlayer({ src, totalDuration = 0 }) {
       {/* Real <audio> element — gives browser range-request support + correct duration */}
       <audio
         ref={audioRef}
-        src={src}
         preload="metadata"
+        crossOrigin="anonymous"
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
+        onError={(e) => {
+          const audio = e.currentTarget
+          if (audio.crossOrigin === 'anonymous') {
+            audio.crossOrigin = null
+            audio.load()
+          }
+        }}
         style={{ display: 'none' }}
-      />
+      >
+        {/* Provide codec hint so browser can decode webm/opus correctly */}
+        <source src={src} type={mimeType || 'audio/webm;codecs=opus'} />
+        <source src={src} type="audio/webm" />
+        <source src={src} type="audio/ogg" />
+      </audio>
 
       <button style={styles.btn} onClick={togglePlay} title={playing ? 'Pause' : 'Play'}>
         {playing ? <PauseIcon /> : <PlayIcon />}

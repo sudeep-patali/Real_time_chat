@@ -289,7 +289,7 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
       return (
         <div style={s.audioBubble}>
           <span style={s.audioIcon}>🎤</span>
-          <AudioPlayer src={message.fileUrl} totalDuration={message.fileDuration || 0} />
+          <AudioPlayer src={message.fileUrl} totalDuration={message.fileDuration || 0} mimeType={message.mimeType || ''} />
         </div>
       )
     }

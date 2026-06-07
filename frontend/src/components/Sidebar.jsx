@@ -246,7 +246,9 @@ function Sidebar() {
             filteredRooms.map(room => {
               const rid       = room.id || room._id
               const name      = getRoomDisplayName(room)
-              const avatar    = room.avatarUrl || generateAvatar(name)
+              const avatar    = room.isGroup
+                ? (room.groupAvatar || room.avatarUrl || generateAvatar(name))
+                : (room.otherUser?.avatar || room.avatarUrl || generateAvatar(name))
               const unread    = unreadCounts[rid?.toString()] || 0
               const isActive  = activeRoomId === rid
               const online    = isUserOnline(room)
