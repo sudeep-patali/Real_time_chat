@@ -9,12 +9,29 @@ export const MESSAGE_DELIVERED  = 'message_delivered'
 export const MESSAGE_EDIT       = 'message:edit'
 export const MESSAGE_DELETE     = 'message:delete'
 export const SEND_REQUEST       = 'send_request'
+export const MESSAGE_INFO_REQ   = 'message:info'
 
 // Phase 12.1 typing
 export const TYPING_START       = 'typing-start'
 export const TYPING_STOP        = 'typing-stop'
 export const GROUP_TYPING_START = 'group-typing-start'
 export const GROUP_TYPING_STOP  = 'group-typing-stop'
+
+// ── WhatsApp-style status events ──────────────────────────────────────────────
+// Individual chat
+export const MSG_DELIVERED      = 'message-delivered'   // server → sender: { messageId, roomId, deliveredAt, status }
+export const MSG_READ           = 'message-read'        // server → sender: { messageId, roomId, userId, readAt, status }
+
+// Group chat
+export const GROUP_MSG_DELIVERED = 'group-message-delivered' // server → sender: { messageId, roomId, userId, deliveredAt, status }
+export const GROUP_MSG_READ      = 'group-message-read'      // server → sender: { messageId, roomId, userId, readAt, status }
+
+// Group: client → server (mark this room's messages as read/delivered for me)
+export const GROUP_MESSAGE_READ      = 'group-message-read'
+export const GROUP_MESSAGE_DELIVERED = 'group-message-delivered'
+
+// Message Info response
+export const MESSAGE_INFO_RES   = 'message:info-response'
 
 // Inbound (server → client)
 export const RECEIVE_MESSAGE    = 'receive_message'
@@ -30,8 +47,6 @@ export const NOTIFICATION_NEW   = 'notification:new'
 export const NOTIFICATION_READ_ALL = 'notification:read_all'
 
 // Unread count management
-// Server emits UNREAD_INCREMENT to recipient(s) when a new message arrives.
-// Client resets via clearUnread() when the chat is opened.
 export const UNREAD_INCREMENT   = 'unread_increment'
 
 // Group management

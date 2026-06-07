@@ -32,32 +32,24 @@ export const useChatStore = create((set) => ({
       messages: state.messages.filter(m => m.id !== messageId)
     })),
 
-  editMessageInStore: (messageId, patch) =>
+  // Accepts either a plain patch object OR a function (msg) => patch
+  editMessageInStore: (messageId, patchOrFn) =>
     set((state) => ({
-      messages: state.messages.map(m =>
-        m.id === messageId ? { ...m, ...patch } : m
-      )
+      messages: state.messages.map(m => {
+        if (m.id !== messageId) return m
+        const patch = typeof patchOrFn === 'function' ? patchOrFn(m) : patchOrFn
+        return { ...m, ...patch }
+      })
     })),
 
   setMessages: (messages) => set({ messages }),
 
-  // FIX Issue 4: Instead of replacing all rooms, MERGE server rooms with
-  // any optimistically-added rooms already in the store. This prevents
-  // the newly-created room (added in FindPeople before navigation) from
-  // being wiped out when useRooms fetches and calls setRooms.
   setRooms: (serverRooms) =>
     set((state) => {
       const serverIds = new Set(serverRooms.map(r => (r.id || r._id)?.toString()))
-
-      // Keep any optimistic rooms that the server hasn't returned yet.
-      // (They'll be replaced once the server's next fetch includes them.)
       const optimisticOnly = state.rooms.filter(
         r => !serverIds.has((r.id || r._id)?.toString())
       )
-
-      // For rooms the server DID return, prefer the server version BUT
-      // preserve a richer otherUser if the optimistic version had one and
-      // the server version does not (e.g. server returned un-populated ids).
       const merged = serverRooms.map(serverRoom => {
         const rid = (serverRoom.id || serverRoom._id)?.toString()
         const existing = state.rooms.find(r => (r.id || r._id)?.toString() === rid)
@@ -66,7 +58,6 @@ export const useChatStore = create((set) => ({
         }
         return serverRoom
       })
-
       return { rooms: [...optimisticOnly, ...merged] }
     }),
 
@@ -75,8 +66,6 @@ export const useChatStore = create((set) => ({
       const id = (room.id || room._id)?.toString()
       const existingIdx = state.rooms.findIndex(r => (r.id || r._id)?.toString() === id)
       if (existingIdx !== -1) {
-        // FIX: Update existing room (e.g. server response richer than optimistic)
-        // but preserve otherUser.name if the new version is missing it.
         const existing = state.rooms[existingIdx]
         const merged = {
           ...existing,
@@ -165,8 +154,12 @@ export const useChatStore = create((set) => ({
   updateLastMessage: (roomId, message) =>
     set((state) => {
       const roomIdStr = roomId?.toString()
-      // Store type and fileName so Sidebar can show friendly previews (e.g. '📷 Photo' instead of raw URL)
-      const lastMsg = { content: message.content, timestamp: message.timestamp, type: message.type || 'text', fileName: message.fileName || null }
+      const lastMsg = {
+        content:   message.content,
+        timestamp: message.timestamp,
+        type:      message.type || 'text',
+        fileName:  message.fileName || null
+      }
 
       const updatedRooms = state.rooms.map(r =>
         (r._id || r.id)?.toString() === roomIdStr

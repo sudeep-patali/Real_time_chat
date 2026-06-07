@@ -27,35 +27,47 @@ import {
   TYPING_STOP,
   GROUP_TYPING_START,
   GROUP_TYPING_STOP,
+  // WhatsApp-style status events
+  MSG_DELIVERED,
+  MSG_READ,
+  GROUP_MSG_DELIVERED,
+  GROUP_MSG_READ,
+  GROUP_MESSAGE_READ,
+  MESSAGE_INFO_REQ,
+  MESSAGE_INFO_RES,
 } from '../socket/socketEvents'
 import { useAuthStore } from '../store/authStore'
 
-// FIX Issue 2: Always convert senderId to a plain string so the
-// isOwn === (msg.senderId === currentUserId) comparison works
-// regardless of whether senderId arrives as a Mongo ObjectId,
-// a populated object, or a plain string.
+// Always convert senderId to a plain string
 function normalizeMessage(msg) {
-  // Resolve the raw senderId value from any shape the server can return
   const rawSenderId =
-    msg.senderId?._id   ||   // populated object from DB fetch
-    msg.senderId?.id    ||   // already normalised object
-    msg.senderId            // plain string / ObjectId
+    msg.senderId?._id   ||
+    msg.senderId?.id    ||
+    msg.senderId
 
   return {
-    id:           (msg.id || msg._id)?.toString(),
-    content:      msg.content,
-    // Always store as a plain string so === comparisons work
-    senderId:     rawSenderId?.toString?.() ?? String(rawSenderId ?? ''),
-    senderName:   msg.senderId?.name || msg.senderName || 'User',
-    senderAvatar: msg.senderId?.avatar || msg.senderAvatar || null,
-    roomId:       (msg.roomId?._id || msg.roomId?.id || msg.roomId)?.toString?.() ?? String(msg.roomId ?? ''),
-    timestamp:    msg.createdAt || msg.timestamp,
-    type:         msg.type || 'text',
-    fileUrl:      msg.fileUrl || null,
-    fileName:     msg.fileName || null,
-    mimeType:     msg.mimeType || null,
-    fileDuration: msg.fileDuration || null,
-    readBy:       msg.readBy || []
+    id:             (msg.id || msg._id)?.toString(),
+    content:        msg.content,
+    senderId:       rawSenderId?.toString?.() ?? String(rawSenderId ?? ''),
+    senderName:     msg.senderId?.name || msg.senderName || 'User',
+    senderAvatar:   msg.senderId?.avatar || msg.senderAvatar || null,
+    roomId:         (msg.roomId?._id || msg.roomId?.id || msg.roomId)?.toString?.() ?? String(msg.roomId ?? ''),
+    timestamp:      msg.createdAt || msg.timestamp,
+    sentAt:         msg.sentAt    || msg.createdAt || msg.timestamp,
+    deliveredAt:    msg.deliveredAt || null,
+    readAt:         msg.readAt      || null,
+    deliveredTo:    msg.deliveredTo || [],
+    readBy:         msg.readBy      || [],
+    memberStatuses: msg.memberStatuses || [],
+    status:         msg.status || 'sent',
+    type:           msg.type || 'text',
+    fileUrl:        msg.fileUrl  || null,
+    fileName:       msg.fileName || null,
+    mimeType:       msg.mimeType || null,
+    fileDuration:   msg.fileDuration || null,
+    isEdited:       msg.isEdited  || false,
+    editedAt:       msg.editedAt  || null,
+    isDeleted:      msg.isDeleted || false,
   }
 }
 
@@ -66,9 +78,9 @@ export function useChat(roomId) {
   const typingUsers       = useChatStore(state => state.typingUsers)
   const setMessages       = useChatStore(state => state.setMessages)
   const addMessage        = useChatStore(state => state.addMessage)
-  const replaceMessage      = useChatStore(state => state.replaceMessage)
-  const removeMessage       = useChatStore(state => state.removeMessage)
-  const editMessageInStore  = useChatStore(state => state.editMessageInStore)
+  const replaceMessage    = useChatStore(state => state.replaceMessage)
+  const removeMessage     = useChatStore(state => state.removeMessage)
+  const editMessageInStore= useChatStore(state => state.editMessageInStore)
   const setActiveRoom     = useChatStore(state => state.setActiveRoom)
   const setTyping         = useChatStore(state => state.setTyping)
   const setTypingUser     = useChatStore(state => state.setTypingUser)
@@ -122,15 +134,20 @@ export function useChat(roomId) {
     if (!roomId) return
 
     setActiveRoom(roomId)
-
-    // Immediately clear the badge in the UI
     clearUnread(roomId)
 
-    // Mark all messages read on the server, then emit the socket event so
-    // the other participant(s) see read-receipt ticks update in real time.
+    // Determine if this is a group room
+    const room = rooms.find(r => (r.id || r._id) === roomId)
+    const isGroup = room?.isGroup || false
+
+    // Mark read + emit appropriate event
     messageService.markRead(roomId)
       .then(() => {
-        emit(MESSAGE_READ, { roomId })
+        if (isGroup) {
+          emit(GROUP_MESSAGE_READ, { roomId })
+        } else {
+          emit(MESSAGE_READ, { roomId })
+        }
       })
       .catch(() => {})
 
@@ -143,22 +160,24 @@ export function useChat(roomId) {
 
     emit(JOIN_ROOM, { roomId })
 
-    // ── Incoming messages that belong to THIS open room ────────────────────
+    // ── Incoming messages ────────────────────────────────────────────────────
     const handleReceiveMessage = (payload) => {
       const msg = normalizeMessage(payload.message)
-      // FIX Issue 2: currentUser.id is always a string (from authStore),
-      // and now msg.senderId is also always a string — comparison is safe.
       if (msg.senderId === currentUser?.id?.toString()) return
 
       if (msg.roomId === roomId?.toString()) {
         addMessage(msg)
         updateLastMessage(msg.roomId, msg)
         messageService.markRead(roomId).catch(() => {})
-        emit(MESSAGE_READ, { roomId })
+        if (isGroup) {
+          emit(GROUP_MESSAGE_READ, { roomId })
+        } else {
+          emit(MESSAGE_READ, { roomId })
+        }
       }
     }
 
-    // ── Sent message acknowledgement ──────────────────────────────────────
+    // ── Sent confirmation (from server) ──────────────────────────────────────
     const handleMessageSent = (payload) => {
       const msg    = normalizeMessage(payload.message)
       const tempId = payload.tempId
@@ -168,27 +187,45 @@ export function useChat(roomId) {
       updateLastMessage(msg.roomId, msg)
     }
 
-    // ── Phase 12.1: Individual chat typing ──
-    const handleTypingStart = ({ userId, userName }) => {
-      startTypingAutoExpire(userId, userName || userId)
-    }
-    const handleTypingStop = ({ userId }) => {
-      stopTyping(userId)
+    // ── Individual: message delivered to receiver ────────────────────────────
+    const handleMsgDelivered = ({ messageId, deliveredAt, status }) => {
+      editMessageInStore(messageId, { deliveredAt, status: status || 'delivered' })
     }
 
-    // ── Phase 12.1: Group chat typing ──
-    const handleGroupTypingStart = ({ userId, userName }) => {
-      startTypingAutoExpire(userId, userName || userId)
-    }
-    const handleGroupTypingStop = ({ userId }) => {
-      stopTyping(userId)
+    // ── Individual: message read by receiver ─────────────────────────────────
+    const handleMsgRead = ({ messageId, readAt, status }) => {
+      editMessageInStore(messageId, { readAt, status: status || 'read' })
     }
 
-    // Legacy typing fallback
-    const handleUserTyping    = ({ userId, isTyping }) => setTyping(userId, isTyping)
-    const handleUserOnline    = ({ userId, isOnline }) => updateUserOnline(userId, isOnline)
-    const handleMessageRead   = () => {}
-    const handleMessageDelivered = () => {}
+    // ── Group: a member received delivery ────────────────────────────────────
+    const handleGroupMsgDelivered = ({ messageId, userId, deliveredAt, status }) => {
+      editMessageInStore(messageId, (msg) => {
+        const deliveredTo = [...(msg.deliveredTo || []), userId].filter(
+          (v, i, a) => a.indexOf(v) === i
+        )
+        const memberStatuses = updateMemberStatus(msg.memberStatuses, userId, { deliveredAt })
+        return { deliveredTo, memberStatuses, status: status || msg.status }
+      })
+    }
+
+    // ── Group: a member read the message ─────────────────────────────────────
+    const handleGroupMsgRead = ({ messageId, userId, readAt, status }) => {
+      editMessageInStore(messageId, (msg) => {
+        const readBy  = [...(msg.readBy || []), userId].filter((v, i, a) => a.indexOf(v) === i)
+        const deliveredTo = [...(msg.deliveredTo || []), userId].filter((v, i, a) => a.indexOf(v) === i)
+        const memberStatuses = updateMemberStatus(msg.memberStatuses, userId, { readAt, deliveredAt: msg.deliveredAt })
+        return { readBy, deliveredTo, memberStatuses, status: status || msg.status }
+      })
+    }
+
+    // ── Typing ────────────────────────────────────────────────────────────────
+    const handleTypingStart      = ({ userId, userName }) => startTypingAutoExpire(userId, userName || userId)
+    const handleTypingStop       = ({ userId }) => stopTyping(userId)
+    const handleGroupTypingStart = ({ userId, userName }) => startTypingAutoExpire(userId, userName || userId)
+    const handleGroupTypingStop  = ({ userId }) => stopTyping(userId)
+
+    const handleUserTyping = ({ userId, isTyping }) => setTyping(userId, isTyping)
+    const handleUserOnline = ({ userId, isOnline }) => updateUserOnline(userId, isOnline)
 
     const handleReceiveRequest = ({ roomId: reqRoomId, senderId, senderName }) => {
       addPendingRoom({
@@ -228,6 +265,10 @@ export function useChat(roomId) {
 
     on(RECEIVE_MESSAGE,    handleReceiveMessage)
     on(MESSAGE_SENT,       handleMessageSent)
+    on(MSG_DELIVERED,      handleMsgDelivered)
+    on(MSG_READ,           handleMsgRead)
+    on(GROUP_MSG_DELIVERED,handleGroupMsgDelivered)
+    on(GROUP_MSG_READ,     handleGroupMsgRead)
     on(TYPING_START,       handleTypingStart)
     on(TYPING_STOP,        handleTypingStop)
     on(GROUP_TYPING_START, handleGroupTypingStart)
@@ -235,8 +276,6 @@ export function useChat(roomId) {
     on(USER_TYPING,        handleUserTyping)
     on(USER_STOP_TYPING,   ({ userId }) => setTyping(userId, false))
     on(USER_ONLINE,        handleUserOnline)
-    on(MESSAGE_READ,       handleMessageRead)
-    on(MESSAGE_DELIVERED,  handleMessageDelivered)
     on(RECEIVE_REQUEST,    handleReceiveRequest)
     on(REQUEST_ACCEPTED,   handleRequestAccepted)
     on(REQUEST_REJECTED,   handleRequestRejected)
@@ -250,14 +289,16 @@ export function useChat(roomId) {
 
       off(RECEIVE_MESSAGE,    handleReceiveMessage)
       off(MESSAGE_SENT,       handleMessageSent)
+      off(MSG_DELIVERED,      handleMsgDelivered)
+      off(MSG_READ,           handleMsgRead)
+      off(GROUP_MSG_DELIVERED,handleGroupMsgDelivered)
+      off(GROUP_MSG_READ,     handleGroupMsgRead)
       off(TYPING_START,       handleTypingStart)
       off(TYPING_STOP,        handleTypingStop)
       off(GROUP_TYPING_START, handleGroupTypingStart)
       off(GROUP_TYPING_STOP,  handleGroupTypingStop)
       off(USER_TYPING,        handleUserTyping)
       off(USER_ONLINE,        handleUserOnline)
-      off(MESSAGE_READ,       handleMessageRead)
-      off(MESSAGE_DELIVERED,  handleMessageDelivered)
       off(RECEIVE_REQUEST,    handleReceiveRequest)
       off(REQUEST_ACCEPTED,   handleRequestAccepted)
       off(REQUEST_REJECTED,   handleRequestRejected)
@@ -270,20 +311,21 @@ export function useChat(roomId) {
   }, [roomId])
 
   const sendMessage = async (content, type = 'text', fileUrl = null, fileName = null, mimeType = null, fileDuration = null) => {
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const tempId    = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`
     const optimistic = {
-      id:        tempId,
+      id:          tempId,
       content,
-      // FIX Issue 2: always use a string so the isOwn check is reliable
-      senderId:  currentUser?.id?.toString(),
-      senderName: currentUser?.name || 'You',
+      senderId:    currentUser?.id?.toString(),
+      senderName:  currentUser?.name || 'You',
       roomId,
-      timestamp: new Date().toISOString(),
+      timestamp:   new Date().toISOString(),
+      sentAt:      new Date().toISOString(),
       type,
       fileUrl,
       fileName,
       mimeType,
       fileDuration,
+      status:      'sent',
     }
     addMessage(optimistic)
     emit(SEND_MESSAGE, { content, roomId, type, fileUrl, fileName, mimeType, fileDuration, tempId })
@@ -303,5 +345,21 @@ export function useChat(roomId) {
     emit(MESSAGE_DELETE, { messageId, roomId, deleteFor })
   }
 
-  return { messages, rooms, activeRoomId, typingUsers, sendMessage, editMessage, deleteMessage }
+  const requestMessageInfo = (messageId) => {
+    emit(MESSAGE_INFO_REQ, { messageId })
+  }
+
+  return { messages, rooms, activeRoomId, typingUsers, sendMessage, editMessage, deleteMessage, requestMessageInfo }
+}
+
+// ── Helper: update a memberStatuses entry ────────────────────────────────────
+function updateMemberStatus(memberStatuses = [], userId, patch) {
+  const list   = [...memberStatuses]
+  const idx    = list.findIndex(ms => (ms.userId?._id || ms.userId) === userId || ms.userId?.toString?.() === userId?.toString?.())
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], ...patch }
+  } else {
+    list.push({ userId, ...patch })
+  }
+  return list
 }

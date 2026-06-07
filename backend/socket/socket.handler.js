@@ -16,6 +16,34 @@ async function isBlockedBetween(userAId, userBId) {
   return aBlocked.includes(userBId.toString()) || bBlocked.includes(userAId.toString())
 }
 
+// ── Helper: compute aggregate status for a message ───────────────────────────
+// Returns: 'sent' | 'delivered' | 'read'
+function computeStatus(msg, room, senderId) {
+  if (!room) return 'sent'
+
+  if (room.isGroup) {
+    const others = (room.participantIds || []).filter(
+      p => p.toString() !== senderId.toString()
+    )
+    if (!others.length) return 'sent'
+
+    const readBySet      = new Set((msg.readBy      || []).map(id => id.toString()))
+    const deliveredToSet = new Set((msg.deliveredTo || []).map(id => id.toString()))
+
+    const allRead      = others.every(id => readBySet.has(id.toString()))
+    const allDelivered = others.every(id => deliveredToSet.has(id.toString()))
+
+    if (allRead)      return 'read'
+    if (allDelivered) return 'delivered'
+    return 'sent'
+  }
+
+  // Individual chat
+  if (msg.readAt)      return 'read'
+  if (msg.deliveredAt) return 'delivered'
+  return 'sent'
+}
+
 module.exports = (io) => {
 
   io.use(async (socket, next) => {
@@ -34,29 +62,100 @@ module.exports = (io) => {
   io.on('connection', async (socket) => {
     console.log('Connected:', socket.user?.name)
 
-    // ── Auto-join ALL rooms the user belongs to ──────────────────────────
+    // ── Auto-join ALL rooms the user belongs to ─────────────────────────────
     try {
       const userRooms = await Room.find({
         participantIds: socket.user._id,
         status: { $ne: 'rejected' }
-      }).select('_id')
+      }).select('_id isGroup participantIds')
 
       const roomIds = userRooms.map(r => r._id.toString())
       if (roomIds.length) {
         socket.join(roomIds)
         console.log(`${socket.user.name} auto-joined ${roomIds.length} rooms`)
       }
+
+      // ── On connect: deliver all undelivered messages to this user ──────────
+      // Find all messages sent by others that haven't been delivered to this user yet
+      const undeliveredMessages = await Message.find({
+        roomId:      { $in: userRooms.map(r => r._id) },
+        senderId:    { $ne: socket.user._id },
+        isDeleted:   { $ne: true },
+        // Individual: deliveredAt not set
+        // Group: user not in deliveredTo
+        $or: [
+          { deliveredAt: null,                         },
+          { deliveredTo: { $ne: socket.user._id } }
+        ]
+      }).populate('roomId', 'isGroup participantIds')
+
+      const now = new Date()
+      for (const msg of undeliveredMessages) {
+        const room = msg.roomId // populated
+        if (!room) continue
+
+        const senderIdStr = msg.senderId.toString()
+
+        if (room.isGroup) {
+          // Mark this user as delivered in the group
+          await Message.findByIdAndUpdate(msg._id, {
+            $addToSet: { deliveredTo: socket.user._id },
+            $set:      { [`memberStatuses.$[elem].deliveredAt`]: now }
+          }, {
+            arrayFilters: [{ 'elem.userId': socket.user._id }]
+          })
+
+          // Also ensure memberStatuses entry exists (upsert style)
+          const msgDoc = await Message.findById(msg._id)
+          if (!msgDoc.memberStatuses.find(ms => ms.userId.toString() === socket.user._id.toString())) {
+            msgDoc.memberStatuses.push({ userId: socket.user._id, deliveredAt: now })
+            await msgDoc.save()
+          }
+
+          // Re-fetch to compute new aggregate status
+          const updated = await Message.findById(msg._id).populate('roomId', 'isGroup participantIds')
+          const newStatus = computeStatus(updated, room, senderIdStr)
+
+          // Notify sender of delivery
+          const senderSockets = (await io.fetchSockets()).filter(
+            s => s.user?._id?.toString() === senderIdStr
+          )
+          senderSockets.forEach(s => s.emit('group-message-delivered', {
+            messageId:  msg._id.toString(),
+            roomId:     room._id.toString(),
+            userId:     socket.user._id.toString(),
+            deliveredAt: now,
+            status:     newStatus
+          }))
+
+        } else {
+          // Individual: set deliveredAt once
+          if (!msg.deliveredAt) {
+            await Message.findByIdAndUpdate(msg._id, { deliveredAt: now })
+
+            // Notify sender
+            const senderSockets = (await io.fetchSockets()).filter(
+              s => s.user?._id?.toString() === senderIdStr
+            )
+            senderSockets.forEach(s => s.emit('message-delivered', {
+              messageId:   msg._id.toString(),
+              roomId:      room._id.toString(),
+              deliveredAt: now,
+              status:      'delivered'
+            }))
+          }
+        }
+      }
     } catch (err) {
-      console.error('Auto-join rooms error:', err)
+      console.error('Auto-join / deliver error:', err)
     }
 
     await User.findByIdAndUpdate(socket.user?._id, { isOnline: true })
 
-    // FIX Issue 4: Broadcast this user's online status to everyone
+    // Broadcast this user's online status to everyone
     io.emit('user_online', { userId: socket.user?._id.toString(), isOnline: true })
 
-    // FIX Issue 4: Send the currently-online users list to the newly connected socket
-    // so their client can immediately mark others as online without waiting for events.
+    // Send currently-online users list to the newly connected socket
     try {
       const onlineUsers = await User.find({ isOnline: true, _id: { $ne: socket.user._id } }).select('_id')
       onlineUsers.forEach(u => {
@@ -71,7 +170,7 @@ module.exports = (io) => {
       // Don't actually leave — messages delivered even when chat is closed.
     })
 
-    // ── Send Message ──
+    // ── Send Message ─────────────────────────────────────────────────────────
     socket.on('send_message', async ({ content, roomId, type = 'text', fileUrl, fileName, mimeType, fileDuration, tempId }) => {
       try {
         const room = await Room.findById(roomId).populate('participantIds', 'name avatar')
@@ -91,20 +190,47 @@ module.exports = (io) => {
           }
         }
 
-        // Validate type — include gif
         const validTypes = ['text', 'image', 'video', 'file', 'document', 'audio', 'gif']
         const msgType = validTypes.includes(type) ? type : 'text'
+        const now = new Date()
+
+        // ── Pre-seed memberStatuses for group messages ──
+        let initialMemberStatuses = []
+        let initialDeliveredTo    = []
+        let initialReadBy         = [socket.user._id]
+
+        if (room.isGroup) {
+          // Check which members are online right now — they get instant delivery
+          const allSockets = await io.fetchSockets()
+          const onlineUserIds = new Set(allSockets.map(s => s.user?._id?.toString()).filter(Boolean))
+
+          for (const participant of room.participantIds) {
+            if (participant._id.toString() === socket.user._id.toString()) continue
+            const isOnline = onlineUserIds.has(participant._id.toString())
+            initialMemberStatuses.push({
+              userId:      participant._id,
+              deliveredAt: isOnline ? now : null,
+              readAt:      null
+            })
+            if (isOnline) {
+              initialDeliveredTo.push(participant._id)
+            }
+          }
+        }
 
         const message = await Message.create({
           content,
-          senderId: socket.user._id,
+          senderId:       socket.user._id,
           roomId,
-          type: msgType,
-          fileUrl:      fileUrl      || null,
-          fileName:     fileName     || null,
-          mimeType:     mimeType     || null,
-          fileDuration: fileDuration || null,
-          readBy: [socket.user._id]   // sender has already "read" their own message
+          type:           msgType,
+          fileUrl:        fileUrl      || null,
+          fileName:       fileName     || null,
+          mimeType:       mimeType     || null,
+          fileDuration:   fileDuration || null,
+          sentAt:         now,
+          readBy:         initialReadBy,
+          deliveredTo:    initialDeliveredTo,
+          memberStatuses: initialMemberStatuses,
         })
 
         await Room.findByIdAndUpdate(roomId, {
@@ -114,63 +240,126 @@ module.exports = (io) => {
 
         await message.populate('senderId', 'name avatar')
 
+        // ── Compute initial status ──
+        const status = computeStatus(message, room, socket.user._id)
+
         const formatted = {
-          id:           message._id.toString(),
-          content:      message.content,
-          // FIX Issue 2: always send senderId as a plain string
-          senderId:     message.senderId._id.toString(),
-          senderName:   message.senderId.name,
-          senderAvatar: message.senderId.avatar,
-          roomId:       message.roomId.toString(),
-          timestamp:    message.createdAt,
-          type:         message.type,
-          fileUrl:      message.fileUrl,
-          fileName:     message.fileName,
-          mimeType:     message.mimeType,
-          fileDuration: message.fileDuration,
-          readBy:       message.readBy
+          id:             message._id.toString(),
+          content:        message.content,
+          senderId:       message.senderId._id.toString(),
+          senderName:     message.senderId.name,
+          senderAvatar:   message.senderId.avatar,
+          roomId:         message.roomId.toString(),
+          timestamp:      message.createdAt,
+          sentAt:         message.sentAt,
+          deliveredAt:    message.deliveredAt,
+          readAt:         message.readAt,
+          deliveredTo:    message.deliveredTo,
+          readBy:         message.readBy,
+          memberStatuses: message.memberStatuses,
+          type:           message.type,
+          fileUrl:        message.fileUrl,
+          fileName:       message.fileName,
+          mimeType:       message.mimeType,
+          fileDuration:   message.fileDuration,
+          status,
         }
 
-        // Send to all OTHER sockets in the room (not the sender)
+        // Send to all OTHER sockets in the room
         socket.to(roomId).emit('receive_message', { message: formatted })
-        // Confirm to the sender
+        // Confirm to the sender (with status ticks)
         socket.emit('message_sent', { message: formatted, tempId })
 
-        // ── Emit unread_increment ONLY to offline/other-tab users ──────────
-        const otherParticipants = room.participantIds.filter(
-          p => p._id.toString() !== socket.user._id.toString()
-        )
+        // ── Individual chat: emit delivered immediately if receiver is online ──
+        if (!room.isGroup) {
+          const otherParticipants = room.participantIds.filter(
+            p => p._id.toString() !== socket.user._id.toString()
+          )
 
-        for (const participant of otherParticipants) {
-          if (!room.isGroup) {
-            const blocked = await isBlockedBetween(socket.user._id, participant._id)
-            if (blocked) continue
+          for (const participant of otherParticipants) {
+            if (!room.isGroup) {
+              const blocked = await isBlockedBetween(socket.user._id, participant._id)
+              if (blocked) continue
+            }
+
+            const recipientSockets = (await io.fetchSockets()).filter(
+              s => s.user?._id?.toString() === participant._id.toString()
+            )
+
+            if (recipientSockets.length) {
+              // Receiver is online → mark delivered immediately
+              const deliveredAt = new Date()
+              await Message.findByIdAndUpdate(message._id, { deliveredAt })
+              socket.emit('message-delivered', {
+                messageId:   message._id.toString(),
+                roomId:      roomId.toString(),
+                deliveredAt,
+                status:      'delivered'
+              })
+            }
+
+            recipientSockets.forEach(s =>
+              s.emit('unread_increment', { roomId: roomId.toString() })
+            )
+
+            const notif = await createNotification({
+              userId:   participant._id,
+              type:     room.isGroup ? 'group' : 'message',
+              title:    room.isGroup ? room.groupName : socket.user.name,
+              body:     type === 'text' ? content : `Sent a ${type}`,
+              roomId:   roomId,
+              senderId: socket.user._id,
+              avatar:   socket.user.avatar
+            })
+
+            if (notif) {
+              recipientSockets.forEach(s => s.emit('notification:new', {
+                notification: notif,
+                receiverId: participant._id.toString()
+              }))
+            }
+          }
+        } else {
+          // Group: notify all online members + send unread increments
+          const otherParticipants = room.participantIds.filter(
+            p => p._id.toString() !== socket.user._id.toString()
+          )
+          for (const participant of otherParticipants) {
+            const recipientSockets = (await io.fetchSockets()).filter(
+              s => s.user?._id?.toString() === participant._id.toString()
+            )
+
+            recipientSockets.forEach(s =>
+              s.emit('unread_increment', { roomId: roomId.toString() })
+            )
+
+            const notif = await createNotification({
+              userId:   participant._id,
+              type:     'group',
+              title:    room.groupName,
+              body:     type === 'text' ? content : `Sent a ${type}`,
+              roomId:   roomId,
+              senderId: socket.user._id,
+              avatar:   socket.user.avatar
+            })
+
+            if (notif) {
+              recipientSockets.forEach(s => s.emit('notification:new', {
+                notification: notif,
+                receiverId: participant._id.toString()
+              }))
+            }
           }
 
-          const recipientSockets = await io.fetchSockets()
-          const recipientTargets = recipientSockets.filter(
-            s => s.user?._id?.toString() === participant._id.toString()
-          )
-
-          recipientTargets.forEach(s =>
-            s.emit('unread_increment', { roomId: roomId.toString() })
-          )
-
-          const notif = await createNotification({
-            userId:   participant._id,
-            type:     room.isGroup ? 'group' : 'message',
-            title:    room.isGroup ? room.groupName : socket.user.name,
-            body:     type === 'text' ? content : `Sent a ${type}`,
-            roomId:   roomId,
-            senderId: socket.user._id,
-            avatar:   socket.user.avatar
-          })
-
-          if (notif) {
-            recipientTargets.forEach(s => s.emit('notification:new', {
-              notification: notif,
-              receiverId: participant._id.toString()
-            }))
+          // Inform sender of delivery to online members
+          if (initialDeliveredTo.length) {
+            const updatedStatus = computeStatus(message, room, socket.user._id)
+            socket.emit('group-message-delivered', {
+              messageId:   message._id.toString(),
+              roomId:      roomId.toString(),
+              deliveredAt: now,
+              status:      updatedStatus
+            })
           }
         }
 
@@ -179,24 +368,185 @@ module.exports = (io) => {
       }
     })
 
-    // ── Phase 12.1 Typing — Individual Chat ──
+    // ── Individual: client explicitly marks delivered ────────────────────────
+    socket.on('message-delivered', async ({ messageId, roomId }) => {
+      try {
+        const msg = await Message.findById(messageId).populate('roomId', 'isGroup participantIds')
+        if (!msg || msg.deliveredAt) return
+
+        const now = new Date()
+        await Message.findByIdAndUpdate(messageId, { deliveredAt: now })
+
+        // Notify sender
+        const senderSockets = (await io.fetchSockets()).filter(
+          s => s.user?._id?.toString() === msg.senderId.toString()
+        )
+        senderSockets.forEach(s => s.emit('message-delivered', {
+          messageId,
+          roomId,
+          deliveredAt: now,
+          status:      'delivered'
+        }))
+      } catch (err) {
+        console.error('message-delivered error:', err)
+      }
+    })
+
+    // ── Individual: mark read ────────────────────────────────────────────────
+    socket.on('message_read', async ({ roomId } = {}) => {
+      if (!roomId) return
+      try {
+        const now  = new Date()
+        const room = await Room.findById(roomId).select('isGroup participantIds')
+        if (!room || room.isGroup) return
+
+        // Update all unread messages in this room sent to the current user
+        const updated = await Message.updateMany(
+          {
+            roomId,
+            senderId:  { $ne: socket.user._id },
+            readAt:    null,
+            isDeleted: { $ne: true }
+          },
+          { $set: { readAt: now, deliveredAt: now }, $addToSet: { readBy: socket.user._id } }
+        )
+
+        if (updated.modifiedCount > 0) {
+          // Get last updated message for event payload
+          const lastMsg = await Message.findOne({
+            roomId,
+            senderId: { $ne: socket.user._id },
+            readAt:   now
+          }).sort({ createdAt: -1 })
+
+          // Notify sender(s) in the room
+          socket.to(roomId).emit('message-read', {
+            roomId,
+            userId:  socket.user._id.toString(),
+            readAt:  now,
+            messageId: lastMsg?._id?.toString(),
+            status:  'read'
+          })
+        }
+      } catch (err) {
+        // Fallback: still broadcast legacy event
+        socket.to(roomId).emit('message_read', { roomId, userId: socket.user._id.toString() })
+      }
+    })
+
+    // ── Group: member marks delivered ────────────────────────────────────────
+    socket.on('group-message-delivered', async ({ messageId, roomId }) => {
+      try {
+        const msg = await Message.findById(messageId).populate('roomId', 'isGroup participantIds')
+        if (!msg) return
+
+        const userId = socket.user._id
+        const now    = new Date()
+
+        // Add to deliveredTo if not already there
+        if (!msg.deliveredTo.map(id => id.toString()).includes(userId.toString())) {
+          await Message.findByIdAndUpdate(messageId, {
+            $addToSet: { deliveredTo: userId }
+          })
+
+          // Update or create memberStatuses entry
+          const msIdx = msg.memberStatuses.findIndex(ms => ms.userId.toString() === userId.toString())
+          if (msIdx >= 0) {
+            await Message.findByIdAndUpdate(messageId, {
+              $set: { [`memberStatuses.${msIdx}.deliveredAt`]: now }
+            })
+          } else {
+            await Message.findByIdAndUpdate(messageId, {
+              $push: { memberStatuses: { userId, deliveredAt: now } }
+            })
+          }
+        }
+
+        const updatedMsg = await Message.findById(messageId).populate('roomId', 'isGroup participantIds')
+        const newStatus  = computeStatus(updatedMsg, updatedMsg.roomId, updatedMsg.senderId)
+
+        const senderSockets = (await io.fetchSockets()).filter(
+          s => s.user?._id?.toString() === updatedMsg.senderId.toString()
+        )
+        senderSockets.forEach(s => s.emit('group-message-delivered', {
+          messageId,
+          roomId,
+          userId:      userId.toString(),
+          deliveredAt: now,
+          status:      newStatus
+        }))
+      } catch (err) {
+        console.error('group-message-delivered error:', err)
+      }
+    })
+
+    // ── Group: member marks read ─────────────────────────────────────────────
+    socket.on('group-message-read', async ({ roomId }) => {
+      try {
+        const room = await Room.findById(roomId).select('isGroup participantIds')
+        if (!room || !room.isGroup) return
+
+        const userId = socket.user._id
+        const now    = new Date()
+
+        // Find all unread messages in this room for current user
+        const msgs = await Message.find({
+          roomId,
+          senderId:  { $ne: userId },
+          isDeleted: { $ne: true },
+          readBy:    { $ne: userId }
+        })
+
+        for (const msg of msgs) {
+          await Message.findByIdAndUpdate(msg._id, {
+            $addToSet: { readBy:      userId,
+                         deliveredTo: userId }
+          })
+
+          const msIdx = msg.memberStatuses.findIndex(ms => ms.userId.toString() === userId.toString())
+          if (msIdx >= 0) {
+            await Message.findByIdAndUpdate(msg._id, {
+              $set: {
+                [`memberStatuses.${msIdx}.readAt`]:      now,
+                [`memberStatuses.${msIdx}.deliveredAt`]: now,
+              }
+            })
+          } else {
+            await Message.findByIdAndUpdate(msg._id, {
+              $push: { memberStatuses: { userId, deliveredAt: now, readAt: now } }
+            })
+          }
+
+          const updatedMsg = await Message.findById(msg._id).populate('roomId', 'isGroup participantIds')
+          const newStatus  = computeStatus(updatedMsg, room, updatedMsg.senderId)
+
+          const senderSockets = (await io.fetchSockets()).filter(
+            s => s.user?._id?.toString() === updatedMsg.senderId.toString()
+          )
+          senderSockets.forEach(s => s.emit('group-message-read', {
+            messageId:  msg._id.toString(),
+            roomId,
+            userId:     userId.toString(),
+            readAt:     now,
+            status:     newStatus
+          }))
+        }
+      } catch (err) {
+        console.error('group-message-read error:', err)
+      }
+    })
+
+    // ── Phase 12.1 Typing — Individual Chat ──────────────────────────────────
     socket.on('typing-start', async ({ roomId }) => {
       try {
         const room = await Room.findById(roomId).select('participantIds isGroup')
         if (!room || room.isGroup) return
-
-        const otherId = room.participantIds.find(
-          p => p.toString() !== socket.user._id.toString()
-        )
+        const otherId = room.participantIds.find(p => p.toString() !== socket.user._id.toString())
         if (otherId) {
           const blocked = await isBlockedBetween(socket.user._id, otherId)
           if (blocked) return
         }
-        socket.to(roomId).emit('typing-start', {
-          userId:     socket.user._id.toString(),
-          userName:   socket.user.name,
-          roomId
-        })
+        socket.to(roomId).emit('typing-start', { userId: socket.user._id.toString(), userName: socket.user.name, roomId })
       } catch (err) {
         socket.to(roomId).emit('typing-start', { userId: socket.user._id.toString(), roomId })
       }
@@ -206,10 +556,7 @@ module.exports = (io) => {
       try {
         const room = await Room.findById(roomId).select('participantIds isGroup')
         if (!room || room.isGroup) return
-
-        const otherId = room.participantIds.find(
-          p => p.toString() !== socket.user._id.toString()
-        )
+        const otherId = room.participantIds.find(p => p.toString() !== socket.user._id.toString())
         if (otherId) {
           const blocked = await isBlockedBetween(socket.user._id, otherId)
           if (blocked) return
@@ -220,23 +567,14 @@ module.exports = (io) => {
       }
     })
 
-    // ── Phase 12.1 Typing — Group Chat ──
+    // ── Phase 12.1 Typing — Group Chat ───────────────────────────────────────
     socket.on('group-typing-start', async ({ roomId }) => {
       try {
         const room = await Room.findById(roomId).select('participantIds isGroup')
         if (!room || !room.isGroup) return
-
-        socket.to(roomId).emit('group-typing-start', {
-          userId:   socket.user._id.toString(),
-          userName: socket.user.name,
-          roomId
-        })
+        socket.to(roomId).emit('group-typing-start', { userId: socket.user._id.toString(), userName: socket.user.name, roomId })
       } catch (err) {
-        socket.to(roomId).emit('group-typing-start', {
-          userId: socket.user._id.toString(),
-          userName: socket.user.name,
-          roomId
-        })
+        socket.to(roomId).emit('group-typing-start', { userId: socket.user._id.toString(), userName: socket.user.name, roomId })
       }
     })
 
@@ -244,14 +582,13 @@ module.exports = (io) => {
       try {
         const room = await Room.findById(roomId).select('participantIds isGroup')
         if (!room || !room.isGroup) return
-
         socket.to(roomId).emit('group-typing-stop', { userId: socket.user._id.toString(), roomId })
       } catch (err) {
         socket.to(roomId).emit('group-typing-stop', { userId: socket.user._id.toString(), roomId })
       }
     })
 
-    // ── Legacy typing (keep for backwards compat) ──
+    // ── Legacy typing (backwards compat) ─────────────────────────────────────
     socket.on('user_typing', async ({ roomId, isTyping }) => {
       try {
         const room = await Room.findById(roomId).select('participantIds isGroup')
@@ -259,9 +596,7 @@ module.exports = (io) => {
           socket.to(roomId).emit('user_typing', { userId: socket.user._id.toString(), roomId, isTyping })
           return
         }
-        const otherId = room.participantIds.find(
-          p => p.toString() !== socket.user._id.toString()
-        )
+        const otherId = room.participantIds.find(p => p.toString() !== socket.user._id.toString())
         if (otherId) {
           const blocked = await isBlockedBetween(socket.user._id, otherId)
           if (blocked) return
@@ -279,9 +614,7 @@ module.exports = (io) => {
           socket.to(roomId).emit('user_stop_typing', { userId: socket.user._id.toString(), roomId })
           return
         }
-        const otherId = room.participantIds.find(
-          p => p.toString() !== socket.user._id.toString()
-        )
+        const otherId = room.participantIds.find(p => p.toString() !== socket.user._id.toString())
         if (otherId) {
           const blocked = await isBlockedBetween(socket.user._id, otherId)
           if (blocked) return
@@ -292,18 +625,7 @@ module.exports = (io) => {
       }
     })
 
-    // ── Read receipts ──
-    socket.on('message_read', ({ roomId } = {}) => {
-      if (!roomId) return
-      socket.to(roomId).emit('message_read', { roomId, userId: socket.user._id.toString() })
-    })
-
-    socket.on('message_delivered', ({ roomId, messageId } = {}) => {
-      if (!roomId || !messageId) return
-      socket.to(roomId).emit('message_delivered', { roomId, messageId })
-    })
-
-    // ── Edit Message ──
+    // ── Edit Message ──────────────────────────────────────────────────────────
     socket.on('message:edit', async ({ messageId, content, roomId }) => {
       try {
         const msg = await Message.findById(messageId)
@@ -327,7 +649,7 @@ module.exports = (io) => {
       }
     })
 
-    // ── Delete Message ──
+    // ── Delete Message ────────────────────────────────────────────────────────
     socket.on('message:delete', async ({ messageId, roomId, deleteFor }) => {
       try {
         const msg = await Message.findById(messageId)
@@ -351,16 +673,90 @@ module.exports = (io) => {
       }
     })
 
-    // ── Message Request ──
-    // FIX Issue 3: After emitting to the receiver, also make the sender's
-    // socket join the room so they receive real-time updates immediately.
+    // ── Message Info: get detailed status ─────────────────────────────────────
+    socket.on('message:info', async ({ messageId }) => {
+      try {
+        const msg = await Message.findById(messageId)
+          .populate('senderId', 'name avatar')
+          .populate('readBy',      'name avatar')
+          .populate('deliveredTo', 'name avatar')
+          .populate('memberStatuses.userId', 'name avatar')
+
+        if (!msg) return
+
+        const room = await Room.findById(msg.roomId).populate('participantIds', 'name avatar')
+        if (!room) return
+
+        // Build rich info payload
+        const info = {
+          messageId:  msg._id.toString(),
+          roomId:     msg.roomId.toString(),
+          isGroup:    room.isGroup,
+          type:       msg.type,
+          sentAt:     msg.sentAt || msg.createdAt,
+          deliveredAt: msg.deliveredAt || null,
+          readAt:      msg.readAt      || null,
+          sender: {
+            id:     msg.senderId._id.toString(),
+            name:   msg.senderId.name,
+            avatar: msg.senderId.avatar
+          },
+          status: computeStatus(msg, room, msg.senderId._id),
+        }
+
+        if (room.isGroup) {
+          // Build per-member statuses
+          const members = room.participantIds.filter(
+            p => p._id.toString() !== msg.senderId._id.toString()
+          )
+
+          info.memberDetails = members.map(member => {
+            const ms = msg.memberStatuses.find(
+              s => s.userId?._id?.toString() === member._id.toString()
+                || s.userId?.toString()    === member._id.toString()
+            )
+            return {
+              userId:      member._id.toString(),
+              name:        member.name,
+              avatar:      member.avatar,
+              deliveredAt: ms?.deliveredAt || null,
+              readAt:      ms?.readAt      || null,
+              status: ms?.readAt      ? 'read'
+                    : ms?.deliveredAt ? 'delivered'
+                    :                   'sent'
+            }
+          })
+
+          // Aggregate group timestamps
+          const allDeliveredAts = info.memberDetails.map(m => m.deliveredAt).filter(Boolean)
+          const allReadAts      = info.memberDetails.map(m => m.readAt).filter(Boolean)
+          info.deliveredAt = allDeliveredAts.length ? new Date(Math.max(...allDeliveredAts.map(d => new Date(d)))) : null
+          info.readAt      = allReadAts.length      ? new Date(Math.max(...allReadAts.map(d => new Date(d))))      : null
+
+          // Get receiver info for 1-on-1 compatibility — N/A for group
+          info.receiver = null
+        } else {
+          const receiver = room.participantIds.find(
+            p => p._id.toString() !== msg.senderId._id.toString()
+          )
+          info.receiver = receiver
+            ? { id: receiver._id.toString(), name: receiver.name, avatar: receiver.avatar }
+            : null
+        }
+
+        socket.emit('message:info-response', info)
+      } catch (err) {
+        console.error('message:info error:', err)
+      }
+    })
+
+    // ── Message Request ───────────────────────────────────────────────────────
     socket.on('send_request', async ({ receiverId, roomId, senderName }) => {
       try {
         const blocked = await isBlockedBetween(socket.user._id, receiverId)
         if (blocked) return
       } catch (err) { /* fallback: allow */ }
 
-      // FIX Issue 3: Ensure sender's socket is joined to the room
       socket.join(roomId)
 
       const receiverSockets = await io.fetchSockets()
@@ -386,7 +782,7 @@ module.exports = (io) => {
       io.to(roomId).emit('request_rejected', { roomId, rejectedBy: socket.user._id.toString() })
     })
 
-    // ── Notifications ──
+    // ── Notifications ─────────────────────────────────────────────────────────
     socket.on('notification:read', async ({ notificationId }) => {
       try {
         const Notification = require('../models/Notification')
@@ -408,12 +804,11 @@ module.exports = (io) => {
       }
     })
 
-    // ── Disconnect ──
+    // ── Disconnect ────────────────────────────────────────────────────────────
     socket.on('disconnect', async () => {
       await User.findByIdAndUpdate(socket.user?._id, {
         isOnline: false, lastSeen: new Date()
       })
-      // FIX Issue 4: always send userId as string
       io.emit('user_online', { userId: socket.user?._id.toString(), isOnline: false })
       console.log('Disconnected:', socket.user?.name)
     })

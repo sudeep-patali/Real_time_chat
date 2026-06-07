@@ -1,0 +1,42 @@
+/* ═══════════════════════════════════════════════════════════════
+   WHATSAPP-STYLE MESSAGE STATUS TICKS
+   Add this block at the bottom of frontend/src/styles/chat.css
+═══════════════════════════════════════════════════════════════ */
+
+/* Single grey tick — sent */
+.msg-tick {
+  display:        inline-block;
+  vertical-align: middle;
+  flex-shrink:    0;
+  transition:     fill 0.2s ease;
+}
+
+.msg-tick--sent path {
+  fill: rgba(255, 255, 255, 0.55);
+}
+
+/* Double grey ticks — delivered */
+.msg-tick--delivered path {
+  fill: rgba(255, 255, 255, 0.55);
+}
+
+/* Double BLUE ticks — read */
+.msg-tick--read path {
+  fill: #53bdeb;
+}
+
+/* Dark-mode: own-bubble ticks in dark themes */
+[data-theme="dark"] .msg-tick--sent path,
+[data-theme="dark"] .msg-tick--delivered path {
+  fill: rgba(255, 255, 255, 0.45);
+}
+
+/* Light-mode own-bubble ticks */
+[data-theme="light"] .msg-tick--sent path,
+[data-theme="light"] .msg-tick--delivered path {
+  fill: rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="light"] .msg-tick--read path {
+  fill: #0093de;
+}

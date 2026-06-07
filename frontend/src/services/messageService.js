@@ -19,7 +19,6 @@ export const getUnreadCount    = (roomId) =>
   api.get(`/messages/${roomId}/unread-count`)
 
 // Bulk fetch unread counts for ALL rooms the user belongs to.
-// Returns { unreadCounts: { [roomId]: number } }
 export const getAllUnreadCounts = () =>
   api.get('/messages/unread-counts')
 
@@ -28,3 +27,7 @@ export const getSharedMedia    = (roomId) =>
 
 export const clearChat         = (roomId) =>
   api.delete(`/rooms/${roomId}/messages`)
+
+// Message Info — delivery + read details for a single message
+export const getMessageInfo    = (messageId) =>
+  api.get(`/messages/info/${messageId}`)

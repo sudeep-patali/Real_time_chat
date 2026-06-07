@@ -13,6 +13,30 @@ async function isBlockedBetween(userAId, userBId) {
   return aBlocked.includes(userBId.toString()) || bBlocked.includes(userAId.toString())
 }
 
+// ── Helper: compute aggregate status ────────────────────────────────────────
+function computeStatus(msg, room) {
+  const senderId = msg.senderId?._id?.toString() || msg.senderId?.toString()
+  if (!room) return 'sent'
+
+  if (room.isGroup) {
+    const others = (room.participantIds || []).filter(
+      p => (p._id || p).toString() !== senderId
+    )
+    if (!others.length) return 'sent'
+    const readBySet      = new Set((msg.readBy      || []).map(id => (id._id || id).toString()))
+    const deliveredToSet = new Set((msg.deliveredTo || []).map(id => (id._id || id).toString()))
+    const allRead        = others.every(p => readBySet.has((p._id || p).toString()))
+    const allDelivered   = others.every(p => deliveredToSet.has((p._id || p).toString()))
+    if (allRead)      return 'read'
+    if (allDelivered) return 'delivered'
+    return 'sent'
+  }
+
+  if (msg.readAt)      return 'read'
+  if (msg.deliveredAt) return 'delivered'
+  return 'sent'
+}
+
 exports.getHistory = async (req, res, next) => {
   try {
     const { cursor, limit = 30 } = req.query
@@ -25,12 +49,18 @@ exports.getHistory = async (req, res, next) => {
 
     const messages = await Message.find(query)
       .populate('senderId', 'name avatar')
+      .populate('memberStatuses.userId', 'name avatar')
       .sort({ createdAt: -1 })
       .limit(Number(limit))
 
+    const room = await Room.findById(req.params.roomId).select('isGroup participantIds')
+
     const hasMore = messages.length === Number(limit)
     res.json({
-      messages: messages.reverse(),
+      messages: messages.reverse().map(msg => ({
+        ...msg.toObject(),
+        status: computeStatus(msg, room)
+      })),
       hasMore,
       nextCursor: hasMore ? messages[0]._id : null
     })
@@ -51,7 +81,8 @@ exports.sendMessage = async (req, res, next) => {
     const message = await Message.create({
       content, roomId, type, fileUrl,
       senderId: req.user._id,
-      readBy: [req.user._id]   // sender has already "read" their own message
+      sentAt:   new Date(),
+      readBy:   [req.user._id]
     })
     await Room.findByIdAndUpdate(roomId, { lastMessage: message._id })
     await message.populate('senderId', 'name avatar')
@@ -81,7 +112,7 @@ exports.editMessage = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// DELETE /messages/:messageId  — body: { deleteFor: 'me' | 'all' }
+// DELETE /messages/:messageId
 exports.deleteMessage = async (req, res, next) => {
   try {
     const { deleteFor = 'me' } = req.body
@@ -106,33 +137,62 @@ exports.deleteMessage = async (req, res, next) => {
 }
 
 // POST /messages/:roomId/read
-// Marks all messages in the room as read by the current user.
-// Returns the exact count of messages that were newly marked (were unread).
-// The socket handler uses this count to emit an accurate unread_cleared event.
 exports.markRead = async (req, res, next) => {
   try {
     const userId = req.user._id
+    const now    = new Date()
+    const room   = await Room.findById(req.params.roomId).select('isGroup participantIds')
 
-    // Count how many messages are genuinely unread by this user (excluding their own)
     const unreadCount = await Message.countDocuments({
       roomId:    req.params.roomId,
-      senderId:  { $ne: userId },          // ignore messages the user sent themselves
+      senderId:  { $ne: userId },
       readBy:    { $ne: userId },
       isDeleted: { $ne: true }
     })
 
-    // Mark them all read
-    await Message.updateMany(
-      { roomId: req.params.roomId, readBy: { $ne: userId } },
-      { $addToSet: { readBy: userId } }
-    )
+    if (room?.isGroup) {
+      // Group: update readBy + memberStatuses for each unread message
+      const msgs = await Message.find({
+        roomId:    req.params.roomId,
+        senderId:  { $ne: userId },
+        readBy:    { $ne: userId },
+        isDeleted: { $ne: true }
+      })
+
+      for (const msg of msgs) {
+        await Message.findByIdAndUpdate(msg._id, {
+          $addToSet: { readBy: userId, deliveredTo: userId }
+        })
+        const msIdx = msg.memberStatuses.findIndex(ms => ms.userId.toString() === userId.toString())
+        if (msIdx >= 0) {
+          await Message.findByIdAndUpdate(msg._id, {
+            $set: {
+              [`memberStatuses.${msIdx}.readAt`]:      now,
+              [`memberStatuses.${msIdx}.deliveredAt`]: now
+            }
+          })
+        } else {
+          await Message.findByIdAndUpdate(msg._id, {
+            $push: { memberStatuses: { userId, deliveredAt: now, readAt: now } }
+          })
+        }
+      }
+    } else {
+      // Individual: set readAt + deliveredAt
+      await Message.updateMany(
+        { roomId: req.params.roomId, readBy: { $ne: userId } },
+        {
+          $addToSet: { readBy: userId },
+          $set:      { readAt: now, deliveredAt: now }
+        }
+      )
+    }
 
     res.json({ message: 'Marked as read', clearedCount: unreadCount, roomId: req.params.roomId })
   } catch (err) { next(err) }
 }
 
 // GET /messages/:roomId/unread-count
-// Returns the precise unread count for a single room for the current user.
 exports.getUnreadCount = async (req, res, next) => {
   try {
     const count = await Message.countDocuments({
@@ -145,20 +205,17 @@ exports.getUnreadCount = async (req, res, next) => {
   } catch (err) { next(err) }
 }
 
-// GET /messages/unread-counts  — bulk unread counts for all rooms the user is in
+// GET /messages/unread-counts
 exports.getAllUnreadCounts = async (req, res, next) => {
   try {
     const userId = req.user._id
-
-    // Find all accepted rooms this user belongs to
-    const rooms = await Room.find({
+    const rooms  = await Room.find({
       participantIds: userId,
       status: 'accepted'
     }).select('_id')
 
     const roomIds = rooms.map(r => r._id)
 
-    // Aggregate unread counts per room in a single DB query
     const counts = await Message.aggregate([
       {
         $match: {
@@ -168,20 +225,79 @@ exports.getAllUnreadCounts = async (req, res, next) => {
           isDeleted: { $ne: true }
         }
       },
-      {
-        $group: {
-          _id:   '$roomId',
-          count: { $sum: 1 }
-        }
-      }
+      { $group: { _id: '$roomId', count: { $sum: 1 } } }
     ])
 
-    // Build { roomId: count } map
     const result = {}
-    counts.forEach(c => {
-      result[c._id.toString()] = c.count
-    })
+    counts.forEach(c => { result[c._id.toString()] = c.count })
 
     res.json({ unreadCounts: result })
+  } catch (err) { next(err) }
+}
+
+// GET /messages/:messageId/info  — REST endpoint for Message Info panel
+exports.getMessageInfo = async (req, res, next) => {
+  try {
+    const msg = await Message.findById(req.params.messageId)
+      .populate('senderId',          'name avatar')
+      .populate('readBy',            'name avatar')
+      .populate('deliveredTo',       'name avatar')
+      .populate('memberStatuses.userId', 'name avatar')
+
+    if (!msg) return res.status(404).json({ message: 'Not found' })
+
+    const room = await Room.findById(msg.roomId).populate('participantIds', 'name avatar')
+    if (!room) return res.status(404).json({ message: 'Room not found' })
+
+    const senderId = msg.senderId._id.toString()
+
+    const info = {
+      messageId:   msg._id.toString(),
+      roomId:      msg.roomId.toString(),
+      isGroup:     room.isGroup,
+      type:        msg.type,
+      sentAt:      msg.sentAt || msg.createdAt,
+      deliveredAt: msg.deliveredAt || null,
+      readAt:      msg.readAt      || null,
+      sender: {
+        id:     senderId,
+        name:   msg.senderId.name,
+        avatar: msg.senderId.avatar
+      },
+      status: computeStatus(msg, room)
+    }
+
+    if (room.isGroup) {
+      const members = room.participantIds.filter(p => p._id.toString() !== senderId)
+
+      info.memberDetails = members.map(member => {
+        const ms = msg.memberStatuses.find(
+          s => (s.userId?._id || s.userId)?.toString() === member._id.toString()
+        )
+        return {
+          userId:      member._id.toString(),
+          name:        member.name,
+          avatar:      member.avatar,
+          deliveredAt: ms?.deliveredAt || null,
+          readAt:      ms?.readAt      || null,
+          status: ms?.readAt      ? 'read'
+                : ms?.deliveredAt ? 'delivered'
+                :                   'sent'
+        }
+      })
+
+      const allDeliveredAts = info.memberDetails.map(m => m.deliveredAt).filter(Boolean)
+      const allReadAts      = info.memberDetails.map(m => m.readAt).filter(Boolean)
+      info.deliveredAt = allDeliveredAts.length ? new Date(Math.max(...allDeliveredAts.map(d => new Date(d)))) : null
+      info.readAt      = allReadAts.length      ? new Date(Math.max(...allReadAts.map(d => new Date(d))))      : null
+      info.receiver    = null
+    } else {
+      const receiver = room.participantIds.find(p => p._id.toString() !== senderId)
+      info.receiver  = receiver
+        ? { id: receiver._id.toString(), name: receiver.name, avatar: receiver.avatar }
+        : null
+    }
+
+    res.json(info)
   } catch (err) { next(err) }
 }
