@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import api from '../config/api.config'
 
 const AppearanceContext = createContext(null)
@@ -18,11 +18,11 @@ function key(name) {
   return uid ? `${name}_${uid}` : name
 }
 
+function wallpaperKey(mode) {
+  return `wallpaper-${mode}_${getUserId() || 'guest'}`
+}
+
 // ── Persist appearance settings to the database ───────────────────────────
-// Appearance settings (theme excluded — ThemeContext handles that) are stored
-// in user.settings.appearance on the backend so they survive cross-device login.
-// FIX: Previously these settings only lived in localStorage, so logging in on
-// a new device always reset them to defaults.
 async function persistAppearanceToDb(patch) {
   try {
     await api.put('/users/me/settings', { appearance: patch })
@@ -41,6 +41,14 @@ export function AppearanceProvider({ children }) {
   const [compactMode, setCompactModeState] = useState(() =>
     localStorage.getItem(key('compactMode')) === 'true'
   )
+
+  // ── FIX: Wallpapers are now stored in React state so UI re-renders instantly ──
+  // Previously setWallpaper only wrote to localStorage without updating state,
+  // meaning the preview and chat background never updated without a page refresh.
+  const [wallpapers, setWallpapersState] = useState(() => ({
+    light: localStorage.getItem(wallpaperKey('light')) || null,
+    dark:  localStorage.getItem(wallpaperKey('dark'))  || null,
+  }))
 
   // Apply font size to DOM and save to localStorage + DB
   useEffect(() => {
@@ -75,19 +83,27 @@ export function AppearanceProvider({ children }) {
     persistAppearanceToDb({ compactMode: v })
   }
 
-  // ── Wallpaper (kept in localStorage only — too large for DB) ─────────
-  const getWallpaper = (mode) =>
-    localStorage.getItem(`wallpaper-${mode}_${getUserId() || 'guest'}`) || null
+  // ── FIX: Wallpaper setters now update React state for instant reactivity ──
+  // Also persists to localStorage so wallpaper survives refresh and
+  // is user-specific (keyed by userId).
+  const getWallpaper = useCallback((mode) => {
+    return wallpapers[mode] || null
+  }, [wallpapers])
 
-  const setWallpaper = (mode, dataUrl) => {
-    const k = `wallpaper-${mode}_${getUserId() || 'guest'}`
-    if (dataUrl) localStorage.setItem(k, dataUrl)
-    else localStorage.removeItem(k)
-  }
+  const setWallpaper = useCallback((mode, dataUrl) => {
+    const k = wallpaperKey(mode)
+    if (dataUrl) {
+      localStorage.setItem(k, dataUrl)
+    } else {
+      localStorage.removeItem(k)
+    }
+    // FIX: Update state so every consumer re-renders instantly
+    setWallpapersState(prev => ({ ...prev, [mode]: dataUrl || null }))
+  }, [])
 
   // ── Rehydrate: re-read localStorage and DB for the current user ───────
   // Called when the auth:user-changed event fires (login / logout / switch).
-  const rehydrate = async () => {
+  const rehydrate = useCallback(async () => {
     // 1. Read localStorage first (instant — no flicker)
     const lsFont    = localStorage.getItem(key('fontSize'))    || 'medium'
     const lsBubble  = localStorage.getItem(key('bubbleSize'))  || 'normal'
@@ -96,6 +112,12 @@ export function AppearanceProvider({ children }) {
     setFontSizeState(lsFont)
     setBubbleSizeState(lsBubble)
     setCompactModeState(lsCompact)
+
+    // FIX: Also rehydrate wallpapers from the (now user-keyed) localStorage
+    // so switching users shows the correct wallpaper immediately.
+    const lsLightWp = localStorage.getItem(wallpaperKey('light')) || null
+    const lsDarkWp  = localStorage.getItem(wallpaperKey('dark'))  || null
+    setWallpapersState({ light: lsLightWp, dark: lsDarkWp })
 
     // 2. Then try to load from DB so cross-device settings take effect
     //    (only meaningful when a user is logged in)
@@ -121,14 +143,14 @@ export function AppearanceProvider({ children }) {
     } catch {
       // localStorage values already applied above — silently continue.
     }
-  }
+  }, [])
 
   // Re-read per-user appearance settings whenever auth state changes
   useEffect(() => {
     const handler = () => rehydrate()
     window.addEventListener('auth:user-changed', handler)
     return () => window.removeEventListener('auth:user-changed', handler)
-  }, [])
+  }, [rehydrate])
 
   return (
     <AppearanceContext.Provider value={{
@@ -136,6 +158,7 @@ export function AppearanceProvider({ children }) {
       bubbleSize, setBubbleSize,
       compactMode, setCompactMode,
       getWallpaper, setWallpaper,
+      wallpapers, // FIX: expose raw wallpapers object for direct reactive use
       rehydrate,
     }}>
       {children}

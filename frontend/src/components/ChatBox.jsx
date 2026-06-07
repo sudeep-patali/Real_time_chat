@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
-import { useChatStore } from '../store/chatStore'
-import MessageBubble    from './MessageBubble'
+import { useChatStore }    from '../store/chatStore'
+import MessageBubble       from './MessageBubble'
+import { useAppearance }   from '../context/AppearanceContext'
+import { useTheme }        from '../context/ThemeContext'
 import '../styles/chat.css'
 
 function groupByDate(messages) {
@@ -38,6 +40,15 @@ function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activ
   const prevSearchRef = useRef('')
   const typingUserMap = useChatStore(state => state.typingUserMap)
 
+  // FIX: Read wallpaper reactively from AppearanceContext (state, not localStorage directly)
+  // and use effectiveTheme to pick the right wallpaper when theme changes.
+  const { getWallpaper } = useAppearance()
+  const { effectiveTheme } = useTheme()
+
+  // Pick the wallpaper that matches the current effective theme (light or dark).
+  // This updates instantly when the user switches themes or uploads a new wallpaper.
+  const currentWallpaper = getWallpaper(effectiveTheme)
+
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (!searchQuery) {
@@ -67,12 +78,25 @@ function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activ
     return `${names[0]}, ${names[1]} and ${names.length - 2} more are typing…`
   })()
 
-  const showTyping         = typingUsers.length > 0
-  const currentUserIdStr   = currentUserId?.toString?.() ?? String(currentUserId ?? '')
+  const showTyping          = typingUsers.length > 0
+  const currentUserIdStr    = currentUserId?.toString?.() ?? String(currentUserId ?? '')
   const showEncryptedBanner = isEncryptedRoom(messages)
 
+  // FIX: Build inline style for the chat area with wallpaper support.
+  // When a wallpaper is set, it takes over as the background image.
+  // When no wallpaper is set, falls back to the CSS variable color.
+  const chatAreaStyle = currentWallpaper
+    ? {
+        backgroundImage: `url(${currentWallpaper})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'local',
+      }
+    : {}
+
   return (
-    <div className='chat-area'>
+    <div className='chat-area' style={chatAreaStyle}>
 
       {/* ── E2E Encrypted room banner ── */}
       {showEncryptedBanner && (
