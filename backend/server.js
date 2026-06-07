@@ -63,17 +63,10 @@ app.get('/uploads/:filename', (req, res) => {
   const total = stat.size
   const range = req.headers.range
 
-  // FIX: Use the full codec string for .webm files.
-  // Previously '.webm' mapped to 'audio/webm', but MediaRecorder records with
-  // the opus codec and reports the blob type as 'audio/webm;codecs=opus'.
-  // Some browsers (especially Firefox) are strict about the codec declaration
-  // and will refuse to decode audio served without it. Using the full codec
-  // string ensures the Content-Type matches what was recorded, preventing
-  // silent playback or "media resource could not be decoded" errors.
   const ext = path.extname(filePath).toLowerCase()
   const mimeMap = {
-    '.webm': 'audio/webm;codecs=opus',   // was: 'audio/webm'
-    '.ogg':  'audio/ogg;codecs=opus',
+    '.webm': 'audio/webm',
+    '.ogg':  'audio/ogg',
     '.mp3':  'audio/mpeg',
     '.mp4':  'video/mp4',
     '.wav':  'audio/wav',
@@ -86,10 +79,7 @@ app.get('/uploads/:filename', (req, res) => {
   }
   const contentType = mimeMap[ext] || 'application/octet-stream'
 
-  // CORS headers — required so <audio>/<video> elements can load
-  // cross-origin files (frontend on :5173, backend on :5000).
-  // res.writeHead() replaces ALL headers so we must include these
-  // explicitly; the global cors() middleware is bypassed here.
+  // CORS headers must be set explicitly — res.writeHead() bypasses global cors() middleware.
   const origin = req.headers.origin || process.env.CLIENT_URL || '*'
   const corsHeaders = {
     'Access-Control-Allow-Origin':      origin,

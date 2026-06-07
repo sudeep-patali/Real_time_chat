@@ -23,8 +23,7 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
   const chunksRef        = useRef([])
   const timerRef         = useRef(null)
   const animFrameRef     = useRef(null)
-  const streamRef        = useRef(null)       // original mic stream (for MediaRecorder)
-  const visualStreamRef  = useRef(null)       // cloned stream (for AudioContext only)
+  const streamRef        = useRef(null)
   const audioCtxRef      = useRef(null)
   const durationRef      = useRef(0)
   const isStartingRef    = useRef(false)
@@ -34,42 +33,19 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
     if (audioUrl) URL.revokeObjectURL(audioUrl)
   }, [])
 
-  // ── Tear down everything except MediaRecorder (which has its own cleanup path) ──
-  const stopTimersAndVisuals = () => {
+  const stopAll = () => {
     clearInterval(timerRef.current)
     cancelAnimationFrame(animFrameRef.current)
-  }
-
-  const stopAudioContext = () => {
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {})
-      audioCtxRef.current = null
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop()
     }
-    // Stop the cloned visualiser stream too
-    if (visualStreamRef.current) {
-      visualStreamRef.current.getTracks().forEach(t => t.stop())
-      visualStreamRef.current = null
-    }
-  }
-
-  // Only stop the MIC stream tracks — called from inside onstop so recorder
-  // has already flushed all data before we cut the source.
-  const stopMicStream = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop())
       streamRef.current = null
     }
-  }
-
-  // Emergency teardown (cancel / unmount) — recorder already handled or not started
-  const stopAll = () => {
-    stopTimersAndVisuals()
-    stopAudioContext()
-    // Stop recorder first so it can flush, THEN stop mic stream
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop()   // onstop will call stopMicStream
-    } else {
-      stopMicStream()
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {})
+      audioCtxRef.current = null
     }
   }
 
@@ -93,42 +69,24 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
     isStartingRef.current = true
 
     try {
-      // FIX 1: Explicit audio constraints for consistent 48 kHz mono capture
-      // across all browsers and OS audio systems. Without these, some browsers
-      // default to a different sample rate (e.g. 44100 Hz on Linux), which can
-      // cause subtle playback issues or trigger resampling artefacts.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          sampleRate:        48000,
-          channelCount:      1,     // mono is sufficient for voice
-          echoCancellation:  true,
-          noiseSuppression:  true,
-          autoGainControl:   true,
-        }
-      })
+      // Simple audio:true works best across all devices including AirPods.
+      // Forcing sampleRate/channelCount can cause failures on Bluetooth devices
+      // like AirPods which negotiate their own sample rate with the OS.
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
-      // ── Clone stream for visualiser so AudioContext never touches the recorder stream ──
-      // If createMediaStreamSource() processes the same stream MediaRecorder uses,
-      // Chrome can silently discard audio data when the audio graph has no active output.
-      // Using a separate clone keeps the two pipelines completely independent.
-      const visualStream = stream.clone()
-      visualStreamRef.current = visualStream
-
+      // Use system default sample rate — avoids resampling issues on AirPods
       const ctx = new (window.AudioContext || window.webkitAudioContext)()
       audioCtxRef.current = ctx
 
-      const source   = ctx.createMediaStreamSource(visualStream)
+      const source   = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 256
+      // IMPORTANT: Do NOT connect analyser to ctx.destination.
+      // Connecting to destination (even through a muted gain node) routes the
+      // mic signal through the WebAudio output, which triggers the browser's
+      // echo cancellation and causes MediaRecorder to record near-silence.
       source.connect(analyser)
-
-      // A muted destination connection keeps the audio graph alive so the
-      // waveform animation continues to receive frequency data.
-      const silentGain = ctx.createGain()
-      silentGain.gain.value = 0
-      analyser.connect(silentGain)
-      silentGain.connect(ctx.destination)
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
@@ -136,15 +94,7 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
           ? 'audio/webm'
           : 'audio/ogg'
 
-      // FIX 2: Set a constant bitrate so the browser can write a duration header
-      // into the WebM container. Without audioBitsPerSecond, many browsers produce
-      // a variable-bitrate stream with no duration metadata — audio.duration comes
-      // back as Infinity and the scrubber shows 00:00. 64 kbps gives good voice
-      // quality at a small file size (≈8 KB/s).
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        audioBitsPerSecond: 64000,
-      })
+      const recorder = new MediaRecorder(stream, { mimeType })
       chunksRef.current = []
 
       recorder.ondataavailable = (e) => {
@@ -152,14 +102,6 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
       }
 
       recorder.onstop = () => {
-        // ── Stop mic AFTER recorder has flushed all data ──────────────────────
-        // This is the critical ordering fix. Stopping stream tracks before
-        // recorder.stop() causes the final audio chunk to be lost or empty.
-        // By stopping the mic here (inside onstop), we guarantee MediaRecorder
-        // has already written every byte before the source goes silent.
-        stopMicStream()
-        stopAudioContext()
-
         const audioBlob = new Blob(chunksRef.current, { type: mimeType })
         const url       = URL.createObjectURL(audioBlob)
         setBlob(audioBlob)
@@ -169,7 +111,9 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
         isStartingRef.current = false
       }
 
-      // No timeslice — all data delivered in one chunk on stop().
+      // No timeslice — collect all audio in one chunk on stop.
+      // Passing timeslice=100 on Chrome/webm produces misaligned cluster
+      // timestamps that make playback run at wrong speed.
       recorder.start()
       mediaRecorderRef.current = recorder
 
@@ -193,31 +137,23 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
   }, [disabled])
 
   const stopRecording = useCallback(() => {
-    stopTimersAndVisuals()
-    // ── CORRECT ORDER: stop recorder FIRST, mic stream stops inside onstop ──
-    // DO NOT stop stream tracks here. If tracks are stopped before recorder.stop(),
-    // the browser may deliver an empty or truncated final chunk, causing silent audio.
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop()  // triggers ondataavailable → onstop
+    clearInterval(timerRef.current)
+    cancelAnimationFrame(animFrameRef.current)
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
     }
-    // onstop callback handles stopMicStream() and stopAudioContext()
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {})
+      audioCtxRef.current = null
+    }
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
   }, [])
 
   const cancel = useCallback(() => {
-    stopTimersAndVisuals()
-    // Stop recorder first (if active), then cleanup inside onstop won't produce a preview
-    if (mediaRecorderRef.current?.state === 'recording') {
-      // Temporarily override onstop to just clean up without showing preview
-      mediaRecorderRef.current.onstop = () => {
-        stopMicStream()
-        stopAudioContext()
-        isStartingRef.current = false
-      }
-      mediaRecorderRef.current.stop()
-    } else {
-      stopMicStream()
-      stopAudioContext()
-    }
+    stopAll()
     if (audioUrl) URL.revokeObjectURL(audioUrl)
     setAudioUrl(null)
     setBlob(null)

@@ -8,30 +8,11 @@ const fmt = (secs) => {
 }
 
 /**
- * Custom audio player.
- *
- * FIX: Remove crossOrigin="anonymous".
- * The /uploads route is public (no auth required). Adding crossOrigin="anonymous"
- * forces a CORS request with an Origin header. If the browser has any cached
- * non-CORS response for the same URL (e.g. from a previous fetch), it will
- * treat the cached opaque response as a CORS failure and refuse to play.
- * Since no credentials are needed to fetch audio files, removing this attribute
- * lets the browser fetch normally without CORS constraints, which is both
- * simpler and more reliable.
- *
- * FIX: Use src attribute directly on <audio> (not <source> children).
- * Direct src attribute + audio.load() reload path works correctly.
- * <source> children don't reliably re-resolve after attribute changes.
- *
- * FIX: Handle Infinity duration from streaming WebM.
- * Browsers report audio.duration = Infinity for WebM files that have no
- * duration header written (common with variable-bitrate MediaRecorder output).
- * When this happens we fall back to totalDuration (the integer second count
- * from the recorder timer). With audioBitsPerSecond set in MediaRecorder,
- * most browsers now write the header correctly, but the Infinity guard is
- * kept here as a safety net for older browsers and ogg fallback files.
+ * Custom audio player that correctly shows duration before playback.
+ * Uses a real <audio> element (not new Audio()) so the browser can
+ * stream range requests and report duration on loadedmetadata.
  */
-function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
+function AudioPlayer({ src, totalDuration = 0 }) {
   const [playing,     setPlaying]     = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration,    setDuration]    = useState(totalDuration || 0)
@@ -41,6 +22,7 @@ function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
   useEffect(() => {
     setPlaying(false)
     setCurrentTime(0)
+    // Keep totalDuration hint until real duration loads
     setDuration(totalDuration || 0)
   }, [src])
 
@@ -55,14 +37,8 @@ function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
     const audio = audioRef.current
     if (!audio) return
     if (isFinite(audio.duration) && audio.duration > 0) {
-      // FIX: Prefer the browser-decoded duration over the timer-based fallback.
-      // audio.duration is a float (e.g. 3.84 s) while totalDuration is always a
-      // whole-second integer from the setInterval counter. The browser value is
-      // more accurate and makes the scrubber position correctly.
       setDuration(audio.duration)
     }
-    // If audio.duration is Infinity (no duration header in the WebM), keep the
-    // totalDuration fallback that was already set in state — do nothing here.
   }
 
   const handleTimeUpdate = () => {
@@ -83,11 +59,7 @@ function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
       audio.pause()
       setPlaying(false)
     } else {
-      audio.play()
-        .then(() => setPlaying(true))
-        .catch((err) => {
-          console.error('Audio play failed:', err.message, 'src:', audio.src)
-        })
+      audio.play().then(() => setPlaying(true)).catch(() => {})
     }
   }
 
@@ -104,10 +76,7 @@ function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
 
   return (
     <div style={styles.wrap}>
-      {/*
-        No crossOrigin attribute — audio files are public, no CORS auth needed.
-        Direct src on <audio> for reliable loading and reload.
-      */}
+      {/* Real <audio> element — gives browser range-request support + correct duration */}
       <audio
         ref={audioRef}
         src={src}
@@ -115,7 +84,6 @@ function AudioPlayer({ src, totalDuration = 0, mimeType = '' }) {
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
-        onError={(e) => console.error('Audio error:', e.currentTarget.error?.message, 'src:', e.currentTarget.src)}
         style={{ display: 'none' }}
       />
 
