@@ -259,6 +259,7 @@ module.exports = (io) => {
           fileName:       message.fileName,
           mimeType:       message.mimeType,
           fileDuration:   message.fileDuration,
+          replyTo:        message.replyTo || null,
           status,
         }
 

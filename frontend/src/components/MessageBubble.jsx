@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useAuth } from '../hooks/useAuth'
 import {
   MoreVertical,
   Pencil,
@@ -198,7 +199,8 @@ function InfoRow({ label, value }) {
 }
 
 // ── MessageBubble ────────────────────────────────────────────────────────────
-function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false, isMatch = false, onEdit, onDelete, onReply }) {
+function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false, isMatch = false, onEdit, onDelete, onReply, onScrollToMessage }) {
+  const { currentUser }             = useAuth()
   const [menuOpen,      setMenuOpen]      = useState(false)
   const [editing,       setEditing]       = useState(false)
   const [editText,      setEditText]      = useState(message.content)
@@ -417,6 +419,7 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
     <>
       <div
         className={`bubble-wrapper ${isOwn ? 'own' : 'other'}`}
+        data-message-id={message.id}
         style={isMatch && !isActiveMatch ? { opacity: 0.6 } : undefined}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -431,16 +434,38 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
           )}
 
           {/* ── Reply quote ── */}
-          {message.replyTo && (
-            <div className={`bubble-reply-quote${isOwn ? ' own' : ''}`}>
-              <span className='bubble-reply-name'>{message.replyTo.senderName || 'User'}</span>
-              <span className='bubble-reply-text'>
-                {message.replyTo.content?.length > 80
-                  ? message.replyTo.content.slice(0, 80) + '…'
-                  : message.replyTo.content || '[attachment]'}
-              </span>
-            </div>
-          )}
+          {message.replyTo && (() => {
+            const rt = message.replyTo
+            const myId       = currentUser?.id?.toString() || currentUser?._id?.toString() || ''
+            const rtSenderId = rt.senderId?.toString() || ''
+            const replyIsOwn = myId && rtSenderId ? rtSenderId === myId : isOwn && rt.senderName === message.senderName
+            const replyName  = replyIsOwn ? 'You' : (rt.senderName || 'User')
+            const replyText  = (() => {
+              const t = rt.type || 'text'
+              if (t === 'audio')    return '🎤 Voice message'
+              if (t === 'image')    return '📷 Photo'
+              if (t === 'video')    return '📹 Video'
+              if (t === 'gif')      return '🎞 GIF'
+              if (t === 'file' || t === 'document') return '📎 File'
+              const c = rt.content || ''
+              // Fallback: sniff content for file URLs (old messages saved before type was included)
+              if (/^https?:\/\/.+\.(webm|ogg|mp3|m4a|wav|opus)(\?.*)?$/i.test(c)) return '🎤 Voice message'
+              if (/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i.test(c)) return '📷 Photo'
+              if (/^https?:\/\/.+\.(mp4|mov|avi|mkv|webm)(\?.*)?$/i.test(c))         return '📹 Video'
+              if (/^https?:\/\//.test(c) && c.includes('/uploads/'))                  return '📎 Attachment'
+              return c.length > 80 ? c.slice(0, 80) + '…' : c || '[attachment]'
+            })()
+            return (
+              <div
+                className={`bubble-reply-quote${isOwn ? ' own' : ''}`}
+                onClick={() => rt.id && onScrollToMessage?.(rt.id)}
+                style={rt.id ? { cursor: 'pointer' } : {}}
+              >
+                <span className='bubble-reply-name'>{replyName}</span>
+                <span className='bubble-reply-text'>{replyText}</span>
+              </div>
+            )
+          })()}
 
           {renderContent()}
 

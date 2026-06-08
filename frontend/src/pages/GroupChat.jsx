@@ -22,6 +22,15 @@ function GroupChat() {
   const [searchQuery, setSearchQuery] = useState('')
   const [matchIndex,  setMatchIndex]  = useState(0)
   const searchInputRef = useRef(null)
+  const [replyTo, setReplyTo] = useState(null)
+
+  const handleScrollToMessage = (messageId) => {
+    const el = document.querySelector(`[data-message-id="${messageId}"]`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('message-highlight')
+    setTimeout(() => el.classList.remove('message-highlight'), 2100)
+  }
 
   useRooms()
 
@@ -168,9 +177,11 @@ function GroupChat() {
             activeMatchMsgIndex={activeMatchMsgIndex}
             onEditMessage={editMessage}
             onDeleteMessage={deleteMessage}
+            onReply={setReplyTo}
+            onScrollToMessage={handleScrollToMessage}
           />
 
-          <MessageInput onSend={sendMessage} roomId={roomId} isGroup={true} />
+          <MessageInput onSend={sendMessage} roomId={roomId} isGroup={true} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} />
         </div>
       </div>
     </div>

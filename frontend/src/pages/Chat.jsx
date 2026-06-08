@@ -32,6 +32,15 @@ function Chat() {
   // ── Reply state ───────────────────────────────────────────────
   const [replyTo, setReplyTo] = useState(null)
 
+  // ── Scroll to original message when reply quote is clicked ───
+  const handleScrollToMessage = (messageId) => {
+    const el = document.querySelector(`[data-message-id="${messageId}"]`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('message-highlight')
+    setTimeout(() => el.classList.remove('message-highlight'), 2100)
+  }
+
   // ── Block status ──────────────────────────────────────────────
   const [blockStatus, setBlockStatus] = useState({
     iBlockedThem: false,
@@ -370,6 +379,7 @@ function Chat() {
             onEditMessage={editMessage}
             onDeleteMessage={deleteMessage}
             onReply={setReplyTo}
+            onScrollToMessage={handleScrollToMessage}
           />
 
           {/* ── Input / blocked / pending banners ── */}

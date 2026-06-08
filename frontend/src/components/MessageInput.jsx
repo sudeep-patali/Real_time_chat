@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { Paperclip, Smile, Mic, Send, X, CornerUpLeft } from 'lucide-react'
+import { Paperclip, Smile, Mic, Send, X } from 'lucide-react'
 import { useSocket } from '../hooks/useSocket'
+import { useAuth }   from '../hooks/useAuth'
 import { TYPING_START, TYPING_STOP, GROUP_TYPING_START, GROUP_TYPING_STOP } from '../socket/socketEvents'
 import FileUpload from './FileUpload'
 import EmojiPicker from './EmojiPicker'
@@ -12,6 +13,7 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
   const [showUpload, setShowUpload] = useState(false)
   const [showEmoji,  setShowEmoji]  = useState(false)
   const { emit }                    = useSocket()
+  const { currentUser }             = useAuth()
   const typingTimer                 = useRef(null)
   const isTypingRef                 = useRef(false)
   const inputRef                    = useRef(null)
@@ -65,9 +67,9 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
     clearTimeout(typingTimer.current)
     emitTypingStop()
     const replyContext = replyTo
-      ? { id: replyTo.id, content: replyTo.content, senderName: replyTo.senderName }
+      ? { id: replyTo.id, content: replyTo.content, senderName: replyTo.senderName, type: replyTo.type || 'text', senderId: replyTo.senderId || null }
       : null
-    onSend(text.trim(), 'text', null, null, null, replyContext)
+    onSend(text.trim(), 'text', null, null, null, null, replyContext)
     setText('')
     onCancelReply?.()
     inputRef.current?.focus()
@@ -103,10 +105,29 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
     })
   }
 
-  const showMic      = !text.trim() && !disabled
-  const replyPreview = replyTo
-    ? (replyTo.type === 'text' ? replyTo.content : `[${replyTo.type}]`)
-    : ''
+  const showMic = !text.trim() && !disabled
+
+  const replyPreviewText = (() => {
+    if (!replyTo) return ''
+    const t = replyTo.type || 'text'
+    if (t === 'audio')                    return '🎤 Voice message'
+    if (t === 'image')                    return '📷 Photo'
+    if (t === 'video')                    return '📹 Video'
+    if (t === 'gif')                      return '🎞 GIF'
+    if (t === 'file' || t === 'document') return '📎 File'
+    const c = replyTo.content || ''
+    if (/^https?:\/\/.+\.(webm|ogg|mp3|m4a|wav|opus)(\?.*)?$/i.test(c)) return '🎤 Voice message'
+    if (/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i.test(c)) return '📷 Photo'
+    if (/^https?:\/\/.+\.(mp4|mov|avi|mkv|webm)(\?.*)?$/i.test(c))         return '📹 Video'
+    if (/^https?:\/\//.test(c) && c.includes('/uploads/'))                  return '📎 Attachment'
+    return c.length > 80 ? c.slice(0, 80) + '…' : c
+  })()
+
+  const replyPreviewName = (() => {
+    if (!replyTo) return ''
+    const myName = currentUser?.name || ''
+    return (myName && replyTo.senderName === myName) ? 'You' : (replyTo.senderName || 'User')
+  })()
 
   return (
     <>
@@ -125,15 +146,15 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
         </div>
       )}
 
+      <div className='input-bar-container'>
+
       {/* ── Reply preview bar ── */}
       {replyTo && !disabled && (
         <div className='reply-preview-bar'>
-          <CornerUpLeft size={14} className='reply-preview-icon' />
+          <div className='reply-preview-accent' />
           <div className='reply-preview-text'>
-            <span className='reply-preview-name'>{replyTo.senderName || 'User'}</span>
-            <span className='reply-preview-content'>
-              {replyPreview.length > 80 ? replyPreview.slice(0, 80) + '…' : replyPreview}
-            </span>
+            <span className='reply-preview-name'>{replyPreviewName}</span>
+            <span className='reply-preview-content'>{replyPreviewText}</span>
           </div>
           <button className='reply-preview-cancel' onClick={onCancelReply} title='Cancel reply (Esc)'>
             <X size={15} />
@@ -193,6 +214,7 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
             <Send size={20} />
           </button>
         )}
+      </div>
       </div>
     </>
   )

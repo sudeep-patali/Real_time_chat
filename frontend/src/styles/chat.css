@@ -477,16 +477,46 @@
   text-overflow: ellipsis;
 }
 
+/* ── Reply-jump highlight flash ── */
+@keyframes messageFlash {
+  0%   { outline: 3px solid var(--color-primary); outline-offset: 2px; filter: brightness(0.75); }
+  50%  { outline: 3px solid var(--color-primary); outline-offset: 2px; filter: brightness(0.75); }
+  100% { outline: 3px solid transparent;          outline-offset: 2px; filter: brightness(1);    }
+}
+
+.message-highlight .bubble {
+  animation: messageFlash 2s ease-out forwards;
+  border-radius: 7.5px;
+}
+
+
+.input-bar-container {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-header-bg);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
 /* ── Reply Preview Bar ── */
 .reply-preview-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--color-surface-2);
-  border-top: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-primary);
+  gap: 10px;
+  padding: 8px 16px 6px;
+  background: var(--color-header-bg);
+  border-bottom: 1px solid var(--color-border);
   animation: slideUpReply 0.15s ease;
+  min-height: 48px;
+}
+
+.reply-preview-accent {
+  width: 3px;
+  align-self: stretch;
+  min-height: 32px;
+  background: var(--color-primary);
+  border-radius: 3px;
+  flex-shrink: 0;
 }
 
 @keyframes slideUpReply {
@@ -504,12 +534,12 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .reply-preview-name {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -529,10 +559,14 @@
   border: none;
   cursor: pointer;
   color: var(--color-text-dim);
-  padding: 2px;
+  padding: 4px;
   display: flex;
   align-items: center;
+  justify-content: center;
   border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
@@ -564,8 +598,6 @@
   align-items: flex-end;
   gap: 8px;
   padding: 8px 16px 10px;
-  background: var(--color-header-bg);
-  border-top: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
