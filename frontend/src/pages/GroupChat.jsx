@@ -8,6 +8,7 @@ import Navbar from '../components/Navbar'
 import Sidebar from '../components/Sidebar'
 import ChatBox from '../components/ChatBox'
 import MessageInput from '../components/MessageInput'
+import { Search, MoreVertical } from 'lucide-react'
 import '../styles/chat.css'
 
 function GroupChat() {
@@ -88,82 +89,92 @@ function GroupChat() {
   const activeMatchMsgIndex = matchCount > 0 ? matches[matchIndex] : -1
 
   return (
-    <div style={styles.shell}>
+    <div className="chat-shell">
       <Navbar />
-      <div style={styles.body}>
+      <div className="chat-body">
         <Sidebar />
-        <div style={styles.main}>
+        <div className="chat-main">
 
           {/* ── Header ── */}
-          <div className='chat-header' onClick={() => navigate(`/group/${roomId}/info`)}>
-            <div className='chat-header-avatar-wrap'>
-              <div className='chat-header-avatar' style={{
-                background: '#7c6ef7', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 15,
-                overflow: 'hidden', padding: 0,
-              }}>
+          <div className="chat-header" onClick={() => navigate(`/group/${roomId}/info`)}>
+            <div className="chat-header-avatar-wrap">
+              <div
+                className="chat-header-avatar"
+                style={{
+                  background: '#7c6ef7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: 15,
+                  overflow: 'hidden',
+                  padding: 0,
+                }}
+              >
                 {groupAvatar
                   ? <img src={groupAvatar} alt={groupName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
                   : initials}
               </div>
             </div>
 
-            <div className='chat-header-info'>
-              <span className='chat-header-name'>{groupName}</span>
-              <span className='chat-header-status offline' style={{ fontSize: 11 }}>
+            <div className="chat-header-info">
+              <span className="chat-header-name">{groupName}</span>
+              <span className="chat-header-status offline" style={{ fontSize: 11 }}>
                 {memberNames || 'Group'}
               </span>
             </div>
 
-            <div className='chat-header-actions'>
+            <div className="chat-header-actions">
               <button
-                className='chat-header-icon'
-                title='Search in chat (Ctrl+F)'
+                className="chat-header-icon"
+                title="Search in chat (Ctrl+F)"
                 onClick={e => { e.stopPropagation(); openSearch() }}
               >
-                🔍
+                <Search size={18} />
               </button>
-              <button className='chat-header-icon' title='More'
-                onClick={e => e.stopPropagation()}>⋮</button>
+              <button
+                className="chat-header-icon"
+                title="More"
+                onClick={e => e.stopPropagation()}
+              >
+                <MoreVertical size={18} />
+              </button>
             </div>
           </div>
 
           {/* ── Search Bar ── */}
           {searchOpen && (
-            <div className='chat-search-bar'>
-              <div className='chat-search-pill'>
-                <svg width='15' height='15' viewBox='0 0 24 24' fill='none'
-                  stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'
-                  style={{ color: 'var(--color-text-dim)', flexShrink: 0 }}>
-                  <circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/>
-                </svg>
+            <div className="chat-search-bar">
+              <div className="chat-search-pill">
+                <Search size={15} style={{ color: 'var(--color-text-dim)', flexShrink: 0 }} />
                 <input
                   ref={searchInputRef}
-                  type='text'
-                  placeholder='Search messages…'
+                  type="text"
+                  placeholder="Search messages…"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter') e.shiftKey ? goPrev() : goNext()
                     if (e.key === 'Escape') closeSearch()
                   }}
-                  autoComplete='off'
+                  autoComplete="off"
                   spellCheck={false}
                 />
                 {searchQuery && (
-                  <span className='chat-search-count'>
+                  <span className="chat-search-count">
                     {matchCount === 0 ? 'No results' : `${matchIndex + 1} / ${matchCount}`}
                   </span>
                 )}
               </div>
-              <button className='chat-search-nav-btn' onClick={goPrev} disabled={matchCount < 2} title='Previous (Shift+Enter)'>
-                <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'><polyline points='18 15 12 9 6 15'/></svg>
+              <button className="chat-search-nav-btn" onClick={goPrev} disabled={matchCount < 2} title="Previous (Shift+Enter)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
               </button>
-              <button className='chat-search-nav-btn' onClick={goNext} disabled={matchCount < 2} title='Next (Enter)'>
-                <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'><polyline points='6 9 12 15 18 9'/></svg>
+              <button className="chat-search-nav-btn" onClick={goNext} disabled={matchCount < 2} title="Next (Enter)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
               </button>
-              <button className='chat-search-close-btn' onClick={closeSearch} title='Close (Esc)'>
-                <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'><line x1='18' y1='6' x2='6' y2='18'/><line x1='6' y1='6' x2='18' y2='18'/></svg>
+              <button className="chat-search-close-btn" onClick={closeSearch} title="Close (Esc)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
           )}
@@ -186,12 +197,6 @@ function GroupChat() {
       </div>
     </div>
   )
-}
-
-const styles = {
-  shell: { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--color-bg)', overflow: 'hidden' },
-  body:  { flex: 1, display: 'flex', overflow: 'hidden' },
-  main:  { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' },
 }
 
 export default GroupChat

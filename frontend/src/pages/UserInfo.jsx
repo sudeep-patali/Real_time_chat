@@ -8,41 +8,30 @@ import * as roomService from '../services/roomService'
 import * as messageService from '../services/messageService'
 import MediaGallery from '../components/MediaGallery'
 import { USER_ONLINE } from '../socket/socketEvents'
+import {
+  ArrowLeft, MessageCircle, Bell, BellOff, Ban, Flag,
+  Trash2, Info, Mail, Clock, Calendar, MessageSquare,
+  Image, Paperclip
+} from 'lucide-react'
 import '../styles/chat.css'
 
 // ── Animated online indicator ──────────────────────────────────────────────
 function OnlinePulse({ isOnline }) {
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6,
-      fontSize: 12, fontWeight: 600,
-      color: isOnline ? '#00a884' : 'var(--color-text-dim)',
-      background: isOnline ? 'rgba(0,168,132,0.1)' : 'rgba(255,255,255,0.04)',
-      border: `1px solid ${isOnline ? 'rgba(0,168,132,0.25)' : 'var(--color-border)'}`,
-      borderRadius: 20, padding: '4px 12px',
-    }}>
-      <span style={{
-        width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-        background: isOnline ? '#00a884' : 'var(--color-text-dim)',
-        boxShadow: isOnline ? '0 0 0 3px rgba(0,168,132,0.2)' : 'none',
-        animation: isOnline ? 'pulse 2s infinite' : 'none',
-      }} />
+    <span className={`ui-online-pill${isOnline ? ' ui-online-pill--online' : ''}`}>
+      <span className={`ui-online-dot${isOnline ? ' ui-online-dot--active' : ''}`} />
       {isOnline ? 'Online' : 'Offline'}
     </span>
   )
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────
-function StatCard({ icon, label, value, color = 'var(--color-primary)' }) {
+function StatCard({ icon, label, value }) {
   return (
-    <div style={{
-      flex: 1, backgroundColor: 'var(--color-surface-2)', borderRadius: 10,
-      border: '1px solid var(--color-border)', padding: '12px 10px',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-    }}>
-      <span style={{ fontSize: 20 }}>{icon}</span>
-      <span style={{ fontSize: 18, fontWeight: 700, color }}>{value}</span>
-      <span style={{ fontSize: 10, color: 'var(--color-text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>{label}</span>
+    <div className="ui-stat-card">
+      <span className="ui-stat-icon">{icon}</span>
+      <span className="ui-stat-value">{value}</span>
+      <span className="ui-stat-label">{label}</span>
     </div>
   )
 }
@@ -65,7 +54,7 @@ function UserInfo() {
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState(null)
   const [busy,         setBusy]         = useState('')
-  const [liveOnline,   setLiveOnline]   = useState(null) // null = use store
+  const [liveOnline,   setLiveOnline]   = useState(null)
   const [liveLastSeen, setLiveLastSeen] = useState(null)
 
   // Find the shared room
@@ -78,7 +67,6 @@ function UserInfo() {
   const rid     = room?._id || room?.id
   const isMuted = room?.isMuted || false
 
-  // Effective online state: prefer live socket update, fall back to store
   const isOnline = liveOnline !== null
     ? liveOnline
     : onlineUsers.includes(userId?.toString())
@@ -176,133 +164,129 @@ function UserInfo() {
       : 'Offline'
 
   return (
-    <div style={s.page}>
+    <div className="ui-page">
       {/* ── Top Bar ─────────────────────────────────────────────────────── */}
-      <div style={s.topBar}>
-        <button style={s.backBtn} onClick={() => navigate(-1)}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
+      <div className="ui-topbar">
+        <button className="ui-back-btn" onClick={() => navigate(-1)}>
+          <ArrowLeft size={20} />
         </button>
-        <span style={s.topBarTitle}>Contact Info</span>
+        <span className="ui-topbar-title">Contact Info</span>
       </div>
 
-      <div style={s.scroll}>
-        <div style={s.inner}>
+      <div className="ui-scroll">
+        <div className="ui-inner">
 
           {/* ── Hero Card ────────────────────────────────────────────────── */}
-          <div style={s.heroCard}>
-            {/* Avatar with online ring */}
-            <div style={{ ...s.avatarRing, borderColor: isOnline ? '#00a884' : 'rgba(124,110,247,0.3)' }}>
+          <div className="ui-hero-card">
+            <div
+              className="ui-avatar-ring"
+              style={{ borderColor: isOnline ? '#00a884' : 'rgba(124,110,247,0.3)' }}
+            >
               {user.avatar
-                ? <img src={user.avatar} alt={user.name} style={s.avatarImg} />
-                : <div style={s.avatar}>{initials}</div>
+                ? <img src={user.avatar} alt={user.name} className="ui-avatar-img" />
+                : <div className="ui-avatar-initials">{initials}</div>
               }
-              {/* Live online dot on avatar */}
-              {isOnline && <span style={s.avatarOnlineDot} />}
+              {isOnline && <span className="ui-avatar-online-dot" />}
             </div>
 
-            <h2 style={s.name}>{user.name}</h2>
+            <h2 className="ui-hero-name">{user.name}</h2>
             <OnlinePulse isOnline={isOnline} />
 
             {user.isBlocked && (
-              <div style={s.blockedBadge}>🚫 You have blocked this user</div>
+              <div className="ui-blocked-badge">
+                <Ban size={12} />
+                You have blocked this user
+              </div>
             )}
 
             {/* Stats Row */}
             {(totalMsgs !== null || media.length > 0) && (
-              <div style={s.statsRow}>
+              <div className="ui-stats-row">
                 {totalMsgs !== null && (
-                  <StatCard icon="💬" label="Messages" value={totalMsgs} />
+                  <StatCard
+                    icon={<MessageSquare size={18} style={{ color: 'var(--color-primary)' }} />}
+                    label="Messages"
+                    value={totalMsgs}
+                  />
                 )}
-                <StatCard icon="🖼️" label="Media" value={media.length} />
-                <StatCard icon="📎" label="Docs" value={docs.length} />
+                <StatCard
+                  icon={<Image size={18} style={{ color: 'var(--color-primary)' }} />}
+                  label="Media"
+                  value={media.length}
+                />
+                <StatCard
+                  icon={<Paperclip size={18} style={{ color: 'var(--color-primary)' }} />}
+                  label="Docs"
+                  value={docs.length}
+                />
               </div>
             )}
 
             {/* Action buttons */}
-            <div style={s.actionRow}>
-              <button style={s.actionBtn} onClick={() => rid && navigate(`/chat/${rid}`)} disabled={!rid}>
-                <span style={s.actionIconWrap}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                  </svg>
+            <div className="ui-action-row">
+              <button
+                className="ui-action-btn"
+                onClick={() => rid && navigate(`/chat/${rid}`)}
+                disabled={!rid}
+              >
+                <span className="ui-action-icon">
+                  <MessageCircle size={18} />
                 </span>
-                <span style={s.actionLabel}>Message</span>
+                <span className="ui-action-label">Message</span>
               </button>
 
-              <button style={{ ...s.actionBtn, opacity: busy === 'mute' ? 0.5 : 1 }}
-                onClick={handleMute} disabled={!rid || busy === 'mute'}>
-                <span style={{ ...s.actionIconWrap, color: isMuted ? '#f59e0b' : 'var(--color-primary)' }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                    {isMuted && <line x1="1" y1="1" x2="23" y2="23"/>}
-                  </svg>
+              <button
+                className={`ui-action-btn${busy === 'mute' ? ' ui-action-btn--busy' : ''}`}
+                onClick={handleMute}
+                disabled={!rid || busy === 'mute'}
+              >
+                <span className={`ui-action-icon${isMuted ? ' ui-action-icon--muted' : ''}`}>
+                  {isMuted ? <BellOff size={18} /> : <Bell size={18} />}
                 </span>
-                <span style={s.actionLabel}>{isMuted ? 'Unmute' : 'Mute'}</span>
+                <span className="ui-action-label">{isMuted ? 'Unmute' : 'Mute'}</span>
               </button>
             </div>
           </div>
 
           {/* ── About ──────────────────────────────────────────────────────── */}
-          <div style={s.section}>
-            <p style={s.sectionLabel}>About</p>
-            <div style={s.infoRow}>
-              <svg style={s.infoIcon} width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              <p style={s.infoValue}>{user.bio || 'Hey there! I am using this app.'}</p>
+          <div className="ui-section">
+            <p className="ui-section-label">About</p>
+            <div className="ui-info-row">
+              <Info size={16} className="ui-info-icon" />
+              <p className="ui-info-value">{user.bio || 'Hey there! I am using this app.'}</p>
             </div>
           </div>
 
           {/* ── Contact ─────────────────────────────────────────────────────── */}
-          <div style={s.section}>
-            <p style={s.sectionLabel}>Contact</p>
-            <div style={s.infoRow}>
-              <svg style={s.infoIcon} width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
-              </svg>
+          <div className="ui-section">
+            <p className="ui-section-label">Contact</p>
+            <div className="ui-info-row">
+              <Mail size={16} className="ui-info-icon" />
               <div>
-                <p style={s.infoValue}>{user.email}</p>
-                <p style={s.infoSub}>Email</p>
+                <p className="ui-info-value">{user.email}</p>
+                <p className="ui-info-sub">Email</p>
               </div>
             </div>
 
-            {/* Last seen */}
-            <div style={s.rowDivider} />
-            <div style={s.infoRow}>
-              <svg style={s.infoIcon} width="16" height="16" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <polyline points="12 6 12 12 16 14"/>
-              </svg>
+            <div className="ui-row-divider" />
+            <div className="ui-info-row">
+              <Clock size={16} className="ui-info-icon" />
               <div>
-                <p style={{ ...s.infoValue, color: isOnline ? '#00a884' : 'var(--color-text)' }}>{lastSeenText}</p>
-                <p style={s.infoSub}>Last Seen</p>
+                <p className="ui-info-value" style={{ color: isOnline ? '#00a884' : 'var(--color-text)' }}>
+                  {lastSeenText}
+                </p>
+                <p className="ui-info-sub">Last Seen</p>
               </div>
             </div>
 
             {memberSince && (
               <>
-                <div style={s.rowDivider} />
-                <div style={s.infoRow}>
-                  <svg style={s.infoIcon} width="16" height="16" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                    <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
-                    <line x1="3" y1="10" x2="21" y2="10"/>
-                  </svg>
+                <div className="ui-row-divider" />
+                <div className="ui-info-row">
+                  <Calendar size={16} className="ui-info-icon" />
                   <div>
-                    <p style={s.infoValue}>Member since {memberSince}</p>
-                    <p style={s.infoSub}>Joined</p>
+                    <p className="ui-info-value">Member since {memberSince}</p>
+                    <p className="ui-info-sub">Joined</p>
                   </div>
                 </div>
               </>
@@ -310,32 +294,44 @@ function UserInfo() {
           </div>
 
           {/* ── Shared Media & Documents ─────────────────────────────────── */}
-          <div style={s.section}>
-            <p style={s.sectionLabel}>Shared Media & Documents</p>
+          <div className="ui-section">
+            <p className="ui-section-label">Shared Media & Documents</p>
             <MediaGallery media={media} documents={docs} />
           </div>
 
           {/* ── Danger Actions ───────────────────────────────────────────── */}
-          <div style={s.dangerSection}>
+          <div className="ui-danger-section">
             {rid && (
               <>
-                <button style={{ ...s.dangerBtn, color: 'var(--color-text-muted)', opacity: busy === 'clear' ? 0.5 : 1 }}
-                  onClick={handleClearChat} disabled={busy === 'clear'}>
-                  <span style={s.dangerIcon}>🗑</span>
+                <button
+                  className="ui-danger-btn"
+                  onClick={handleClearChat}
+                  disabled={busy === 'clear'}
+                  style={{ opacity: busy === 'clear' ? 0.5 : 1 }}
+                >
+                  <Trash2 size={16} className="ui-danger-icon" />
                   {busy === 'clear' ? 'Clearing...' : 'Clear Chat'}
                 </button>
-                <div style={s.rowDivider} />
+                <div className="ui-row-divider" />
               </>
             )}
-            <button style={{ ...s.dangerBtn, color: 'var(--color-text-muted)', opacity: busy === 'block' ? 0.5 : 1 }}
-              onClick={handleBlock} disabled={busy === 'block'}>
-              <span style={s.dangerIcon}>🚫</span>
+            <button
+              className="ui-danger-btn"
+              onClick={handleBlock}
+              disabled={busy === 'block'}
+              style={{ opacity: busy === 'block' ? 0.5 : 1 }}
+            >
+              <Ban size={16} className="ui-danger-icon" />
               {busy === 'block' ? 'Please wait...' : (user.isBlocked ? `Unblock ${user.name}` : `Block ${user.name}`)}
             </button>
-            <div style={s.rowDivider} />
-            <button style={{ ...s.dangerBtn, color: 'var(--color-error)', opacity: busy === 'report' ? 0.5 : 1 }}
-              onClick={handleReport} disabled={busy === 'report'}>
-              <span style={s.dangerIcon}>⚠️</span>
+            <div className="ui-row-divider" />
+            <button
+              className="ui-danger-btn ui-danger-btn--error"
+              onClick={handleReport}
+              disabled={busy === 'report'}
+              style={{ opacity: busy === 'report' ? 0.5 : 1 }}
+            >
+              <Flag size={16} className="ui-danger-icon" />
               {busy === 'report' ? 'Submitting...' : `Report ${user.name}`}
             </button>
           </div>
@@ -344,12 +340,12 @@ function UserInfo() {
       </div>
 
       <style>{`
-        @keyframes pulse {
+        @keyframes ui-pulse {
           0%   { box-shadow: 0 0 0 0   rgba(0,168,132,0.5); }
           70%  { box-shadow: 0 0 0 6px rgba(0,168,132,0);   }
           100% { box-shadow: 0 0 0 0   rgba(0,168,132,0);   }
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes ui-spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   )
@@ -357,19 +353,16 @@ function UserInfo() {
 
 function LoadingScreen({ title, onBack }) {
   return (
-    <div style={s.page}>
-      <div style={s.topBar}>
-        <button style={s.backBtn} onClick={onBack}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
+    <div className="ui-page">
+      <div className="ui-topbar">
+        <button className="ui-back-btn" onClick={onBack}>
+          <ArrowLeft size={20} />
         </button>
-        <span style={s.topBarTitle}>{title}</span>
+        <span className="ui-topbar-title">{title}</span>
       </div>
-      <div style={s.centered}>
-        <div style={s.spinner} />
-        <p style={s.loadingText}>Loading...</p>
+      <div className="ui-centered">
+        <div className="ui-spinner" />
+        <p className="ui-loading-text">Loading...</p>
       </div>
     </div>
   )
@@ -377,55 +370,18 @@ function LoadingScreen({ title, onBack }) {
 
 function ErrorScreen({ title, msg, onBack }) {
   return (
-    <div style={s.page}>
-      <div style={s.topBar}>
-        <button style={s.backBtn} onClick={onBack}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-            stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
+    <div className="ui-page">
+      <div className="ui-topbar">
+        <button className="ui-back-btn" onClick={onBack}>
+          <ArrowLeft size={20} />
         </button>
-        <span style={s.topBarTitle}>{title}</span>
+        <span className="ui-topbar-title">{title}</span>
       </div>
-      <div style={s.centered}>
+      <div className="ui-centered">
         <p style={{ color: 'var(--color-error)', fontSize: 14 }}>{msg || 'Not found.'}</p>
       </div>
     </div>
   )
-}
-
-const s = {
-  page:          { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--color-bg)', overflow: 'hidden' },
-  topBar:        { display: 'flex', alignItems: 'center', gap: 12, padding: '0 20px', height: 59, minHeight: 59, backgroundColor: 'var(--color-header-bg)', borderBottom: '1px solid var(--color-border)', flexShrink: 0 },
-  backBtn:       { background: 'none', border: 'none', color: 'var(--color-primary)', cursor: 'pointer', width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  topBarTitle:   { fontSize: 16, fontWeight: 600, color: 'var(--color-text)', letterSpacing: '0.1px' },
-  scroll:        { flex: 1, overflowY: 'auto', backgroundColor: 'var(--color-bg)' },
-  inner:         { maxWidth: 680, margin: '0 auto', padding: '24px 16px 48px', display: 'flex', flexDirection: 'column', gap: 12 },
-  centered:      { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  spinner:       { width: 28, height: 28, border: '2px solid var(--color-border)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' },
-  loadingText:   { fontSize: 13, color: 'var(--color-text-muted)' },
-  heroCard:      { backgroundColor: 'var(--color-surface)', borderRadius: 16, padding: '32px 24px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, border: '1px solid var(--color-border)' },
-  avatarRing:    { position: 'relative', width: 100, height: 100, borderRadius: '50%', border: '3px solid', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 4, transition: 'border-color 0.4s' },
-  avatar:        { width: 88, height: 88, borderRadius: '50%', background: 'linear-gradient(135deg,#9c8ef7,#7c6ef7)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 32 },
-  avatarImg:     { width: 88, height: 88, borderRadius: '50%', objectFit: 'cover' },
-  avatarOnlineDot: { position: 'absolute', bottom: 4, right: 4, width: 14, height: 14, borderRadius: '50%', background: '#00a884', border: '2px solid var(--color-surface)', animation: 'pulse 2s infinite' },
-  name:          { fontSize: 22, fontWeight: 700, color: 'var(--color-text)' },
-  statsRow:      { display: 'flex', gap: 8, width: '100%', marginTop: 4 },
-  actionRow:     { display: 'flex', gap: 8, marginTop: 4, width: '100%', justifyContent: 'center' },
-  actionBtn:     { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', cursor: 'pointer', padding: '10px 20px', borderRadius: 10, flex: 1, maxWidth: 120 },
-  actionIconWrap:{ color: 'var(--color-primary)', display: 'flex', alignItems: 'center' },
-  actionLabel:   { fontSize: 11, color: 'var(--color-text-muted)', fontWeight: 500, whiteSpace: 'nowrap' },
-  section:       { backgroundColor: 'var(--color-surface)', borderRadius: 12, padding: '16px 20px', border: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 10 },
-  sectionLabel:  { fontSize: 10, fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 2 },
-  infoRow:       { display: 'flex', alignItems: 'flex-start', gap: 14 },
-  infoIcon:      { color: 'var(--color-text-dim)', flexShrink: 0, marginTop: 2 },
-  infoValue:     { fontSize: 14, color: 'var(--color-text)', fontWeight: 500, lineHeight: 1.4 },
-  infoSub:       { fontSize: 11, color: 'var(--color-text-dim)', marginTop: 2 },
-  rowDivider:    { height: 1, background: 'var(--color-divider)', margin: '4px 0' },
-  dangerSection: { backgroundColor: 'var(--color-surface)', borderRadius: 12, padding: '4px 20px', border: '1px solid var(--color-border)' },
-  dangerBtn:     { display: 'flex', alignItems: 'center', gap: 12, width: '100%', background: 'none', border: 'none', padding: '13px 0', fontSize: 14, cursor: 'pointer', fontWeight: 500, textAlign: 'left' },
-  dangerIcon:    { fontSize: 16 },
-  blockedBadge:  { marginTop: 2, fontSize: 12, fontWeight: 600, color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 20, padding: '4px 14px' },
 }
 
 export default UserInfo
