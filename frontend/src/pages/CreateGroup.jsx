@@ -407,6 +407,16 @@ const STYLES = `
   }
   @keyframes cg-shine { 0% { left: -100%; } 60%,100% { left: 200%; } }
   @keyframes cg-spin   { to { transform: rotate(360deg); } }
+
+  /* Member hint */
+  .cg-member-hint {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 4px 0;
+  }
+  .cg-member-hint--warn { color: var(--color-text-muted); }
+  .cg-member-hint--ok   { color: #22c55e; }
 `
 
 if (typeof document !== 'undefined' && !document.getElementById('cg-styles')) {
@@ -554,6 +564,7 @@ export default function CreateGroup() {
   }
 
   const canCreate = groupName.trim().length > 0
+  const canCreateGroup = canCreate && selectedUsers.length >= 2
   const initials  = useMemo(() =>
     groupName ? groupName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : 'GR'
   , [groupName])
@@ -772,6 +783,19 @@ export default function CreateGroup() {
                   </div>
                 )}
 
+                {/* Member count hint */}
+                <div className="cg-member-hint">
+                  {selectedUsers.length === 0 && (
+                    <span className="cg-member-hint--warn">Add at least 2 members to create a group</span>
+                  )}
+                  {selectedUsers.length === 1 && (
+                    <span className="cg-member-hint--warn">Add 1 more member to continue</span>
+                  )}
+                  {selectedUsers.length >= 2 && (
+                    <span className="cg-member-hint--ok">✓ {selectedUsers.length} members selected — ready to create</span>
+                  )}
+                </div>
+
                 {/* Error message */}
                 {error && (
                   <div className="cg-error-banner">
@@ -784,7 +808,7 @@ export default function CreateGroup() {
                 <button
                   className="cg-create-btn"
                   onClick={handleCreate}
-                  disabled={!canCreate || creating}
+                  disabled={!canCreateGroup || creating}
                 >
                   {creating ? (
                     <><Spinner /><span>Launching your group…</span></>
@@ -792,7 +816,7 @@ export default function CreateGroup() {
                     <>
                       <Users size={17} />
                       <span>
-                        Create Group{selectedUsers.length > 0 ? ` & Invite ${selectedUsers.length}` : ''}
+                        Create Group & Invite {selectedUsers.length}
                       </span>
                       <div className="cg-btn-shine" />
                     </>

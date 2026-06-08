@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Lock } from 'lucide-react'
 import * as roomService from '../services/roomService'
 import { useChatStore } from '../store/chatStore'
 import { useSocket } from '../hooks/useSocket'
@@ -42,23 +43,25 @@ function MessageRequestBanner({ roomId, senderName, onAccepted, onRejected }) {
   }
 
   return (
-    <div style={s.banner}>
-      <div style={s.lock}>🔒</div>
-      <p style={s.title}>Message Request</p>
-      <p style={s.sub}>
+    <div className="msg-request-banner">
+      <div className="msg-request-lock-icon">
+        <Lock size={24} />
+      </div>
+      <p className="msg-request-title">Message Request</p>
+      <p className="msg-request-sub">
         <strong>{senderName}</strong> wants to send you a message.
         You will not be added to their contacts until you accept.
       </p>
-      <div style={s.actions}>
+      <div className="msg-request-actions">
         <button
-          style={s.rejectBtn}
+          className="btn btn-danger msg-request-reject-btn"
           onClick={handleReject}
           disabled={loading}
         >
           Delete Request
         </button>
         <button
-          style={s.acceptBtn}
+          className="btn btn-primary msg-request-accept-btn"
           onClick={handleAccept}
           disabled={loading}
         >
@@ -67,60 +70,6 @@ function MessageRequestBanner({ roomId, senderName, onAccepted, onRejected }) {
       </div>
     </div>
   )
-}
-
-const s = {
-  banner: {
-    margin: '16px auto',
-    maxWidth: 420,
-    backgroundColor: 'var(--color-surface)',
-    border: '1px solid var(--color-border)',
-    borderRadius: 12,
-    padding: '20px 24px',
-    textAlign: 'center',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-  },
-  lock: {
-    fontSize: 28,
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: 700,
-    color: 'var(--color-text)',
-    marginBottom: 8,
-  },
-  sub: {
-    fontSize: 13,
-    color: 'var(--color-text-muted)',
-    lineHeight: 1.5,
-    marginBottom: 20,
-  },
-  actions: {
-    display: 'flex',
-    gap: 12,
-    justifyContent: 'center',
-  },
-  rejectBtn: {
-    padding: '9px 20px',
-    borderRadius: 8,
-    backgroundColor: 'transparent',
-    border: '1px solid var(--color-error)',
-    color: 'var(--color-error)',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  acceptBtn: {
-    padding: '9px 20px',
-    borderRadius: 8,
-    backgroundColor: 'var(--color-primary)',
-    border: 'none',
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-  }
 }
 
 export default MessageRequestBanner

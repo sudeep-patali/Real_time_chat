@@ -1,6 +1,30 @@
 import { useEffect } from 'react'
+import { CheckCircle, XCircle, Info, AlertTriangle, X } from 'lucide-react'
 import { useNotificationStore } from '../store/notificationStore'
 import { TOAST_DURATION } from '../utils/constants'
+
+const typeConfig = {
+  success: {
+    icon: <CheckCircle size={16} />,
+    borderColor: 'var(--color-success)',
+    iconColor: 'var(--color-success)',
+  },
+  error: {
+    icon: <XCircle size={16} />,
+    borderColor: 'var(--color-error)',
+    iconColor: 'var(--color-error)',
+  },
+  warning: {
+    icon: <AlertTriangle size={16} />,
+    borderColor: '#f59e0b',
+    iconColor: '#f59e0b',
+  },
+  info: {
+    icon: <Info size={16} />,
+    borderColor: 'var(--color-primary)',
+    iconColor: 'var(--color-primary)',
+  },
+}
 
 function Toast() {
   const alerts = useNotificationStore(state => state.alerts)
@@ -18,59 +42,31 @@ function Toast() {
   if (alerts.length === 0) return null
 
   return (
-    <div style={styles.container}>
-      {alerts.map(alert => (
-        <div
-          key={alert.id}
-          style={{
-            ...styles.toast,
-            borderLeft: `4px solid ${
-              alert.type === 'error' ? 'var(--color-error)' :
-              alert.type === 'success' ? 'var(--color-success)' :
-              'var(--color-primary)'
-            }`
-          }}
-        >
-          <p style={styles.message}>{alert.message}</p>
-          <button style={styles.close} onClick={() => removeAlert(alert.id)}>✕</button>
-        </div>
-      ))}
+    <div className="toast-container-top">
+      {alerts.map(alert => {
+        const config = typeConfig[alert.type] || typeConfig.info
+        return (
+          <div
+            key={alert.id}
+            className="toast-item"
+            style={{ borderLeftColor: config.borderColor }}
+          >
+            <span className="toast-item-icon" style={{ color: config.iconColor }}>
+              {config.icon}
+            </span>
+            <p className="toast-item-message">{alert.message}</p>
+            <button
+              className="toast-item-close btn-icon"
+              onClick={() => removeAlert(alert.id)}
+              aria-label="Dismiss notification"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )
+      })}
     </div>
   )
-}
-
-const styles = {
-  container: {
-    position: 'fixed',
-    top: '16px',
-    right: '16px',
-    zIndex: 999,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-  },
-  toast: {
-    backgroundColor: 'var(--color-surface)',
-    border: '1px solid var(--color-border)',
-    borderRadius: '8px',
-    padding: '12px 16px',
-    minWidth: '260px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '12px',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-  },
-  message: {
-    color: 'var(--color-text)',
-    fontSize: '13px',
-  },
-  close: {
-    background: 'none',
-    color: 'var(--color-text-muted)',
-    fontSize: '12px',
-    padding: '2px',
-  }
 }
 
 export default Toast

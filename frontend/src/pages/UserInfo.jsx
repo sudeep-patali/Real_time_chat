@@ -14,6 +14,7 @@ import {
   Image, Paperclip
 } from 'lucide-react'
 import '../styles/chat.css'
+import '../styles/userinfo.css'
 
 // ── Animated online indicator ──────────────────────────────────────────────
 function OnlinePulse({ isOnline }) {
