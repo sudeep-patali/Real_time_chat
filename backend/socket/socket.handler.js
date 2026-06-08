@@ -171,7 +171,7 @@ module.exports = (io) => {
     })
 
     // ── Send Message ─────────────────────────────────────────────────────────
-    socket.on('send_message', async ({ content, roomId, type = 'text', fileUrl, fileName, mimeType, fileDuration, tempId }) => {
+    socket.on('send_message', async ({ content, roomId, type = 'text', fileUrl, fileName, mimeType, fileDuration, tempId, replyTo }) => {
       try {
         const room = await Room.findById(roomId).populate('participantIds', 'name avatar')
         if (!room) return
@@ -228,6 +228,7 @@ module.exports = (io) => {
           readBy:         initialReadBy,
           deliveredTo:    initialDeliveredTo,
           memberStatuses: initialMemberStatuses,
+          replyTo:        replyTo      || null,
         })
 
         await Room.findByIdAndUpdate(roomId, {

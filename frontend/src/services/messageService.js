@@ -31,3 +31,21 @@ export const clearChat         = (roomId) =>
 // Message Info — delivery + read details for a single message
 export const getMessageInfo    = (messageId) =>
   api.get(`/messages/info/${messageId}`)
+
+// Report a message
+export const reportMessage     = (messageId, reason) =>
+  api.post(`/messages/${messageId}/report`, { reason })
+
+// Star / unstar — client-side only (stored in localStorage)
+const STARRED_KEY = 'starred_messages'
+export const getStarredIds = () => {
+  try { return JSON.parse(localStorage.getItem(STARRED_KEY) || '[]') } catch { return [] }
+}
+export const toggleStar = (messageId) => {
+  const starred = getStarredIds()
+  const idx = starred.indexOf(messageId)
+  if (idx === -1) starred.push(messageId)
+  else starred.splice(idx, 1)
+  localStorage.setItem(STARRED_KEY, JSON.stringify(starred))
+  return idx === -1  // returns true if now starred
+}

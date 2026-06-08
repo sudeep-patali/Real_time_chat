@@ -41,9 +41,9 @@ exports.getHistory = async (req, res, next) => {
   try {
     const { cursor, limit = 30 } = req.query
     const query = {
-      roomId:    req.params.roomId,
-      isDeleted: { $ne: true },
-      deletedFor: { $nin: [req.user._id] }
+      roomId:     req.params.roomId,
+      deletedFor: { $nin: [req.user._id] }   // only hide "delete for me"
+      // isDeleted messages (delete for all) are kept — shown as "This message was deleted"
     }
     if (cursor) query._id = { $lt: cursor }
 
@@ -299,5 +299,24 @@ exports.getMessageInfo = async (req, res, next) => {
     }
 
     res.json(info)
+  } catch (err) { next(err) }
+}
+// POST /api/messages/:messageId/report
+exports.reportMessage = async (req, res, next) => {
+  try {
+    const Report  = require('../models/Report')
+    const Message = require('../models/Message')
+    const { reason } = req.body
+    const msg = await Message.findById(req.params.messageId)
+    if (!msg) return res.status(404).json({ message: 'Message not found' })
+    const existing = await Report.findOne({ reportedBy: req.user._id, targetId: msg._id })
+    if (existing) return res.json({ message: 'Already reported' })
+    await Report.create({
+      reportedBy: req.user._id,
+      targetType: 'message',
+      targetId:   msg._id,
+      reason:     reason || 'No reason provided',
+    })
+    res.json({ message: 'Message reported' })
   } catch (err) { next(err) }
 }

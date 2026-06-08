@@ -45,6 +45,8 @@ function normalizeMessage(msg) {
     isEdited:       msg.isEdited     || false,
     editedAt:       msg.editedAt     || null,
     isDeleted:      msg.isDeleted    || false,
+    deletedFor:     msg.deletedFor   || [],
+    replyTo:        msg.replyTo      || null,
     // E2E encryption fields (pass through so ChatBox can show lock icon)
     encrypted:      msg.encrypted    || false,
     iv:             msg.iv           || null,
@@ -300,9 +302,9 @@ export function useChat(roomId) {
    * Send a message. If the room has an E2E key available, the message is
    * encrypted before being sent; otherwise it falls back to plaintext.
    */
-  const sendMessage = async (content, type = 'text', fileUrl = null, fileName = null, mimeType = null, fileDuration = null) => {
+  const sendMessage = async (content, type = 'text', fileUrl = null, fileName = null, mimeType = null, fileDuration = null, replyContext = null) => {
     const tempId    = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    let   payload   = { content, roomId, type, fileUrl, fileName, mimeType, fileDuration, tempId }
+    let   payload   = { content, roomId, type, fileUrl, fileName, mimeType, fileDuration, tempId, replyTo: replyContext }
 
     // Attempt E2E encryption for text messages
     if (type === 'text') {
@@ -322,6 +324,7 @@ export function useChat(roomId) {
       content,                  // show plaintext optimistically
       senderId:    currentUser?.id?.toString(),
       senderName:  currentUser?.name || 'You',
+      senderAvatar: currentUser?.avatar || null,
       roomId,
       timestamp:   new Date().toISOString(),
       sentAt:      new Date().toISOString(),
@@ -332,6 +335,7 @@ export function useChat(roomId) {
       fileDuration,
       status:      'sent',
       encrypted:   payload.encrypted || false,
+      replyTo:     replyContext,
     }
     addMessage(optimistic)
     emit(SEND_MESSAGE, payload)

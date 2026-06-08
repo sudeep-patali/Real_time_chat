@@ -43,6 +43,13 @@ const messageSchema = new mongoose.Schema({
   isDeleted:  { type: Boolean, default: false },
   deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 
+  // Reply
+  replyTo: {
+    id:         { type: String, default: null },
+    content:    { type: String, default: null },
+    senderName: { type: String, default: null },
+  },
+
 }, { timestamps: true });
 
 messageSchema.index({ roomId: 1, createdAt: -1 });

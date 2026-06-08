@@ -34,7 +34,7 @@ function isEncryptedRoom(messages) {
   return textMsgs.length > 0 && textMsgs.every(m => m.encrypted)
 }
 
-function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activeMatchMsgIndex = -1, onEditMessage, onDeleteMessage }) {
+function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activeMatchMsgIndex = -1, onEditMessage, onDeleteMessage, onReply }) {
   const bottomRef     = useRef(null)
   const activeRef     = useRef(null)
   const prevSearchRef = useRef('')
@@ -154,6 +154,7 @@ function ChatBox({ messages, typingUsers, currentUserId, searchQuery = '', activ
                 isMatch={isMatch}
                 onEdit={onEditMessage}
                 onDelete={onDeleteMessage}
+                onReply={onReply}
               />
               {/* Lock icon on encrypted messages */}
               {item.msg.encrypted && !item.msg.decryptFailed && (

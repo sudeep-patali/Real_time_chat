@@ -37,8 +37,34 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-2);
+  flex-shrink: 0;
+}
+
+.chat-header-avatar-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   object-fit: cover;
   display: block;
+  flex-shrink: 0;
+}
+
+.chat-header-avatar-initials {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  user-select: none;
+}
+
+.chat-header-avatar-loading {
+  font-size: 16px;
+  color: var(--color-text-dim);
+  user-select: none;
 }
 
 .chat-header-online-dot {
@@ -402,6 +428,136 @@
 /* ══════════════════════════════════════
    INPUT BAR
 ══════════════════════════════════════ */
+
+/* ── Reply quote inside bubble ── */
+.bubble-reply-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  margin-bottom: 6px;
+  border-left: 3px solid rgba(255,255,255,0.6);
+  background: rgba(0,0,0,0.12);
+  border-radius: 6px;
+  cursor: default;
+}
+
+.bubble-reply-quote.own {
+  border-left-color: rgba(255,255,255,0.5);
+  background: rgba(0,0,0,0.1);
+}
+
+.bubble-reply-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bubble.other .bubble-reply-quote {
+  border-left-color: var(--color-primary);
+  background: var(--color-surface-3, rgba(0,0,0,0.06));
+}
+
+.bubble.other .bubble-reply-name {
+  color: var(--color-primary);
+}
+
+.bubble.other .bubble-reply-text {
+  color: var(--color-text-muted);
+}
+
+.bubble-reply-text {
+  font-size: 12px;
+  color: rgba(255,255,255,0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Reply Preview Bar ── */
+.reply-preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--color-surface-2);
+  border-top: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  animation: slideUpReply 0.15s ease;
+}
+
+@keyframes slideUpReply {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.reply-preview-icon {
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.reply-preview-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.reply-preview-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reply-preview-content {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reply-preview-cancel {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-dim);
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  border-radius: 50%;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.reply-preview-cancel:hover {
+  background: rgba(0,0,0,0.08);
+  color: var(--color-text);
+}
+
+/* ── Report Modal ── */
+.bubble-report-modal {
+  min-width: 300px;
+  max-width: 380px;
+}
+
+.bubble-report-modal .modal-body {
+  padding: 16px;
+}
+
+.bubble-report-modal .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+}
 
 .input-bar {
   display: flex;

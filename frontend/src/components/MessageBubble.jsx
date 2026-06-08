@@ -198,18 +198,25 @@ function InfoRow({ label, value }) {
 }
 
 // ── MessageBubble ────────────────────────────────────────────────────────────
-function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false, isMatch = false, onEdit, onDelete }) {
-  const [menuOpen,    setMenuOpen]    = useState(false)
-  const [editing,     setEditing]     = useState(false)
-  const [editText,    setEditText]    = useState(message.content)
-  const [deleteModal, setDeleteModal] = useState(false)
-  const [infoOpen,    setInfoOpen]    = useState(false)
-  const [hovered,     setHovered]     = useState(false)
+function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false, isMatch = false, onEdit, onDelete, onReply }) {
+  const [menuOpen,      setMenuOpen]      = useState(false)
+  const [editing,       setEditing]       = useState(false)
+  const [editText,      setEditText]      = useState(message.content)
+  const [deleteModal,   setDeleteModal]   = useState(false)
+  const [infoOpen,      setInfoOpen]      = useState(false)
+  const [hovered,       setHovered]       = useState(false)
+  const [reportModal,   setReportModal]   = useState(false)
+  const [reportReason,  setReportReason]  = useState('')
+  const [reportSent,    setReportSent]    = useState(false)
+  const [reportLoading, setReportLoading] = useState(false)
+  const [isStarred,     setIsStarred]     = useState(() =>
+    messageService.getStarredIds().includes(message.id)
+  )
 
   const menuRef   = useRef(null)
   const editRef   = useRef(null)
   const hideTimer = useRef(null)
-  const avatarSrc = generateAvatar(message.senderName || 'User')
+  const avatarSrc = message.senderAvatar || generateAvatar(message.senderName || 'User')
 
   useEffect(() => () => clearTimeout(hideTimer.current), [])
 
@@ -265,6 +272,24 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
       setMenuOpen(false)
     }
   }, [message])
+
+  const handleStar = useCallback(() => {
+    const nowStarred = messageService.toggleStar(message.id)
+    setIsStarred(nowStarred)
+    setMenuOpen(false)
+  }, [message.id])
+
+  const handleReportSubmit = useCallback(async () => {
+    setReportLoading(true)
+    try {
+      await messageService.reportMessage(message.id, reportReason || 'No reason provided')
+      setReportSent(true)
+    } catch {
+      setReportSent(true) // still close gracefully on error
+    } finally {
+      setReportLoading(false)
+    }
+  }, [message.id, reportReason])
 
   // ── Deleted message ─────────────────────────────────────────────────────
   if (message.isDeleted) {
@@ -405,10 +430,25 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
             <span className='bubble-sender'>{message.senderName}</span>
           )}
 
+          {/* ── Reply quote ── */}
+          {message.replyTo && (
+            <div className={`bubble-reply-quote${isOwn ? ' own' : ''}`}>
+              <span className='bubble-reply-name'>{message.replyTo.senderName || 'User'}</span>
+              <span className='bubble-reply-text'>
+                {message.replyTo.content?.length > 80
+                  ? message.replyTo.content.slice(0, 80) + '…'
+                  : message.replyTo.content || '[attachment]'}
+              </span>
+            </div>
+          )}
+
           {renderContent()}
 
           {/* ── Meta: time + status ticks ── */}
           <span className='bubble-meta'>
+            {isStarred && (
+              <span title='Starred' style={{ fontSize: 11, color: 'var(--color-star, #f5c518)', marginRight: 2 }}>★</span>
+            )}
             {message.isEdited && !editing && (
               <span className='bubble-edited-label'>edited</span>
             )}
@@ -456,17 +496,17 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
                   )}
                   <button
                     className='dropdown-item'
-                    onClick={() => { setMenuOpen(false) }}
+                    onClick={() => { setMenuOpen(false); onReply?.(message) }}
                   >
                     <CornerUpLeft size={14} />
                     Reply
                   </button>
                   <button
-                    className='dropdown-item'
-                    onClick={() => { setMenuOpen(false) }}
+                    className={`dropdown-item${isStarred ? ' starred' : ''}`}
+                    onClick={handleStar}
                   >
-                    <Star size={14} />
-                    Star
+                    <Star size={14} style={{ fill: isStarred ? 'var(--color-star, #f5c518)' : 'none', color: isStarred ? 'var(--color-star, #f5c518)' : 'currentColor' }} />
+                    {isStarred ? 'Unstar' : 'Star'}
                   </button>
                   {isOwn && (
                     <button
@@ -480,7 +520,7 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
                   <div className='dropdown-separator' />
                   <button
                     className='dropdown-item danger'
-                    onClick={() => { setMenuOpen(false) }}
+                    onClick={() => { setMenuOpen(false); setReportModal(true); setReportSent(false); setReportReason('') }}
                   >
                     <Flag size={14} />
                     Report
@@ -527,6 +567,57 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
       {/* ── Message Info modal ── */}
       {infoOpen && (
         <MessageInfoModal messageId={message.id} onClose={() => setInfoOpen(false)} />
+      )}
+
+      {/* ── Report modal ── */}
+      {reportModal && (
+        <div className='modal-overlay' onClick={() => setReportModal(false)}>
+          <div className='modal bubble-report-modal' onClick={e => e.stopPropagation()}>
+            <div className='modal-header'>
+              <span className='modal-title'>Report Message</span>
+              <button className='btn btn-ghost btn-icon' onClick={() => setReportModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            {reportSent ? (
+              <div className='modal-body' style={{ textAlign: 'center', padding: '24px 16px' }}>
+                <p style={{ fontSize: 28, marginBottom: 8 }}>✅</p>
+                <p style={{ fontWeight: 600 }}>Report submitted</p>
+                <p style={{ fontSize: 13, opacity: 0.6, marginTop: 4 }}>Thanks for letting us know.</p>
+                <button className='btn btn-sm' style={{ marginTop: 16 }} onClick={() => setReportModal(false)}>Close</button>
+              </div>
+            ) : (
+              <>
+                <div className='modal-body'>
+                  <p style={{ fontSize: 13, marginBottom: 12, opacity: 0.7 }}>Why are you reporting this message?</p>
+                  {['Spam', 'Harassment', 'Hate speech', 'Misinformation', 'Other'].map(reason => (
+                    <label key={reason} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', cursor: 'pointer', fontSize: 14 }}>
+                      <input
+                        type='radio'
+                        name='report-reason'
+                        value={reason}
+                        checked={reportReason === reason}
+                        onChange={() => setReportReason(reason)}
+                        style={{ accentColor: 'var(--color-primary)' }}
+                      />
+                      {reason}
+                    </label>
+                  ))}
+                </div>
+                <div className='modal-footer'>
+                  <button className='btn btn-ghost btn-sm' onClick={() => setReportModal(false)}>Cancel</button>
+                  <button
+                    className='btn btn-sm bubble-delete-all-btn'
+                    onClick={handleReportSubmit}
+                    disabled={!reportReason || reportLoading}
+                  >
+                    {reportLoading ? 'Sending…' : 'Submit Report'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </>
   )

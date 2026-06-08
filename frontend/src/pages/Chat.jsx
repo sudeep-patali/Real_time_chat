@@ -29,6 +29,9 @@ function Chat() {
   const [matchIndex,  setMatchIndex]  = useState(0)
   const searchInputRef = useRef(null)
 
+  // ── Reply state ───────────────────────────────────────────────
+  const [replyTo, setReplyTo] = useState(null)
+
   // ── Block status ──────────────────────────────────────────────
   const [blockStatus, setBlockStatus] = useState({
     iBlockedThem: false,
@@ -366,6 +369,7 @@ function Chat() {
             activeMatchMsgIndex={activeMatchMsgIndex}
             onEditMessage={editMessage}
             onDeleteMessage={deleteMessage}
+            onReply={setReplyTo}
           />
 
           {/* ── Input / blocked / pending banners ── */}
@@ -400,7 +404,7 @@ function Chat() {
               </div>
             </div>
           ) : (
-            <MessageInput onSend={sendMessage} roomId={roomId} disabled={isBlocked} isGroup={false} />
+            <MessageInput onSend={sendMessage} roomId={roomId} disabled={isBlocked} isGroup={false} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} />
           )}
 
         </div>

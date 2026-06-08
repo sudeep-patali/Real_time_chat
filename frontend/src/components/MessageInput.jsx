@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Paperclip, Smile, Mic, Send } from 'lucide-react'
+import { Paperclip, Smile, Mic, Send, X, CornerUpLeft } from 'lucide-react'
 import { useSocket } from '../hooks/useSocket'
 import { TYPING_START, TYPING_STOP, GROUP_TYPING_START, GROUP_TYPING_STOP } from '../socket/socketEvents'
 import FileUpload from './FileUpload'
@@ -7,7 +7,7 @@ import EmojiPicker from './EmojiPicker'
 import VoiceMessageRecorder from './VoiceMessageRecorder'
 import '../styles/chat.css'
 
-function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
+function MessageInput({ onSend, roomId, disabled = false, isGroup = false, replyTo = null, onCancelReply }) {
   const [text,       setText]       = useState('')
   const [showUpload, setShowUpload] = useState(false)
   const [showEmoji,  setShowEmoji]  = useState(false)
@@ -16,6 +16,11 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
   const isTypingRef                 = useRef(false)
   const inputRef                    = useRef(null)
   const emojiRef                    = useRef(null)
+
+  // Focus input when reply is set
+  useEffect(() => {
+    if (replyTo) inputRef.current?.focus()
+  }, [replyTo])
 
   // Close emoji picker when clicking outside
   useEffect(() => {
@@ -32,34 +37,23 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
   const emitTypingStart = () => {
     if (isTypingRef.current) return
     isTypingRef.current = true
-    if (isGroup) {
-      emit(GROUP_TYPING_START, { roomId })
-    } else {
-      emit(TYPING_START, { roomId })
-    }
+    emit(isGroup ? GROUP_TYPING_START : TYPING_START, { roomId })
   }
 
   const emitTypingStop = () => {
     if (!isTypingRef.current) return
     isTypingRef.current = false
-    if (isGroup) {
-      emit(GROUP_TYPING_STOP, { roomId })
-    } else {
-      emit(TYPING_STOP, { roomId })
-    }
+    emit(isGroup ? GROUP_TYPING_STOP : TYPING_STOP, { roomId })
   }
 
   const handleChange = (e) => {
     if (disabled) return
     const val = e.target.value
     setText(val)
-
     if (val.trim()) {
       emitTypingStart()
       clearTimeout(typingTimer.current)
-      typingTimer.current = setTimeout(() => {
-        emitTypingStop()
-      }, 2000)
+      typingTimer.current = setTimeout(emitTypingStop, 2000)
     } else {
       clearTimeout(typingTimer.current)
       emitTypingStop()
@@ -70,13 +64,18 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
     if (disabled || !text.trim()) return
     clearTimeout(typingTimer.current)
     emitTypingStop()
-    onSend(text.trim(), 'text')
+    const replyContext = replyTo
+      ? { id: replyTo.id, content: replyTo.content, senderName: replyTo.senderName }
+      : null
+    onSend(text.trim(), 'text', null, null, null, replyContext)
     setText('')
+    onCancelReply?.()
     inputRef.current?.focus()
   }
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+    if (e.key === 'Escape' && replyTo) onCancelReply?.()
   }
 
   const handleUploadComplete = ({ url, mediaType, fileName, mimeType }) => {
@@ -92,10 +91,7 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
   const handleEmojiSelect = (emoji) => {
     if (disabled) return
     const input = inputRef.current
-    if (!input) {
-      setText(prev => prev + emoji)
-      return
-    }
+    if (!input) { setText(prev => prev + emoji); return }
     const start   = input.selectionStart
     const end     = input.selectionEnd
     const newText = text.slice(0, start) + emoji + text.slice(end)
@@ -107,7 +103,10 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
     })
   }
 
-  const showMic = !text.trim() && !disabled
+  const showMic      = !text.trim() && !disabled
+  const replyPreview = replyTo
+    ? (replyTo.type === 'text' ? replyTo.content : `[${replyTo.type}]`)
+    : ''
 
   return (
     <>
@@ -123,6 +122,22 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
       {showEmoji && !disabled && (
         <div ref={emojiRef} className='emoji-picker-wrap'>
           <EmojiPicker onSelect={handleEmojiSelect} onClose={() => setShowEmoji(false)} />
+        </div>
+      )}
+
+      {/* ── Reply preview bar ── */}
+      {replyTo && !disabled && (
+        <div className='reply-preview-bar'>
+          <CornerUpLeft size={14} className='reply-preview-icon' />
+          <div className='reply-preview-text'>
+            <span className='reply-preview-name'>{replyTo.senderName || 'User'}</span>
+            <span className='reply-preview-content'>
+              {replyPreview.length > 80 ? replyPreview.slice(0, 80) + '…' : replyPreview}
+            </span>
+          </div>
+          <button className='reply-preview-cancel' onClick={onCancelReply} title='Cancel reply (Esc)'>
+            <X size={15} />
+          </button>
         </div>
       )}
 
@@ -152,7 +167,11 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
           <input
             ref={inputRef}
             type='text'
-            placeholder={disabled ? 'Messaging unavailable' : 'Type a message'}
+            placeholder={
+              disabled  ? 'Messaging unavailable' :
+              replyTo   ? `Replying to ${replyTo.senderName || 'User'}…` :
+                          'Type a message'
+            }
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
