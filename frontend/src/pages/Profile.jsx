@@ -5,15 +5,21 @@ import { useAuthStore } from '../store/authStore'
 import { generateAvatar } from '../utils/generateAvatar'
 import * as userService from '../services/userService'
 import Navbar from '../components/Navbar'
+import {
+  ArrowLeft, Camera, Pencil, X, Upload, Trash2,
+  Circle, Calendar, Briefcase, CheckCircle, AlertCircle,
+  Image as ImageIcon, Users, Paperclip, Mic, MessageCircle,
+  Lock, Shield, Eye, UserMinus, Ban, AlertTriangle
+} from 'lucide-react'
 import '../styles/profile.css'
 
 // ─── Constants ────────────────────────────────────────────────
 const STATUS_PRESETS = [
-  { label: 'Available',    icon: '🟢', value: 'available' },
-  { label: 'Busy',         icon: '🔴', value: 'busy' },
-  { label: 'In a Meeting', icon: '📅', value: 'in_meeting' },
-  { label: 'At Work',      icon: '💼', value: 'at_work' },
-  { label: 'Custom…',      icon: '✏️',  value: 'custom' },
+  { label: 'Available',    icon: <Circle size={14} fill="#25d366" style={{ color: '#25d366' }} />, value: 'available' },
+  { label: 'Busy',         icon: <Circle size={14} fill="#f44336" style={{ color: '#f44336' }} />, value: 'busy' },
+  { label: 'In a Meeting', icon: <Calendar size={14} />,  value: 'in_meeting' },
+  { label: 'At Work',      icon: <Briefcase size={14} />, value: 'at_work' },
+  { label: 'Custom…',      icon: <Pencil size={14} />,    value: 'custom' },
 ]
 
 const PRIVACY_OPTIONS = [
@@ -68,18 +74,26 @@ function AvatarModal({ currentAvatar, name, onClose, onSave }) {
       <div className='modal-box' onClick={e => e.stopPropagation()}>
         <div className='modal-header'>
           <span className='modal-title'>Profile Photo</span>
-          <button className='modal-close' onClick={onClose}>✕</button>
+          <button className='modal-close' onClick={onClose}>
+            <X size={16} />
+          </button>
         </div>
         <div className='modal-avatar-preview'>
           <img src={preview || generateAvatar(name)} alt='preview' className='modal-avatar-img' />
         </div>
-        {error && <p className='modal-error'>{error}</p>}
+        <p className='modal-drag-hint'>Upload a JPG, PNG or WEBP image (max 5MB)</p>
+        {error && (
+          <p className='modal-error'>
+            <AlertCircle size={13} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+            {error}
+          </p>
+        )}
         <div className='modal-actions'>
           <button className='modal-btn primary' onClick={() => fileRef.current.click()}>
-            <span>📷</span> Upload Photo
+            <Upload size={14} /> Upload Photo
           </button>
           <button className='modal-btn danger' onClick={handleRemove}>
-            <span>🗑️</span> Remove Photo
+            <Trash2 size={14} /> Remove
           </button>
         </div>
         <input ref={fileRef} type='file' accept='image/jpeg,image/jpg,image/png,image/webp'
@@ -115,7 +129,7 @@ function PrivacyRow({ icon, label, value, onChange }) {
   return (
     <div className='privacy-row'>
       <div className='privacy-left'>
-        <span className='privacy-icon'>{icon}</span>
+        <span className='privacy-row-icon'>{icon}</span>
         <span className='privacy-label'>{label}</span>
       </div>
       <select className='privacy-select' value={value} onChange={e => onChange(e.target.value)}>
@@ -135,18 +149,18 @@ function Profile() {
   const [loading, setLoading]     = useState(true)
 
   // Profile fields
-  const [name, setName]             = useState('')
-  const [username, setUsername]     = useState('')
-  const [bio, setBio]               = useState('')
+  const [name, setName]                 = useState('')
+  const [username, setUsername]         = useState('')
+  const [bio, setBio]                   = useState('')
   const [statusValue, setStatusValue]   = useState('available')
   const [customStatus, setCustomStatus] = useState('')
-  const [editing, setEditing]       = useState(false)
+  const [editing, setEditing]           = useState(false)
   const [editingStatus, setEditingStatus] = useState(false)
-  const [saving, setSaving]         = useState(false)
+  const [saving, setSaving]             = useState(false)
   const [savingStatus, setSavingStatus] = useState(false)
-  const [saveError, setSaveError]   = useState(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
-  const [saveStatusError, setSaveStatusError]   = useState(null)
+  const [saveError, setSaveError]       = useState(null)
+  const [saveSuccess, setSaveSuccess]   = useState(false)
+  const [saveStatusError, setSaveStatusError]     = useState(null)
   const [saveStatusSuccess, setSaveStatusSuccess] = useState(false)
 
   // Avatar
@@ -162,7 +176,7 @@ function Profile() {
   const [privacySuccess, setPrivacySuccess] = useState(false)
 
   // Stats
-  const [stats, setStats]           = useState({ messagesSent: null, groupsJoined: null, filesShared: null, mediaShared: null })
+  const [stats, setStats]             = useState({ messagesSent: null, groupsJoined: null, filesShared: null, mediaShared: null })
   const [statsLoading, setStatsLoading] = useState(true)
 
   // Blocked
@@ -225,7 +239,7 @@ function Profile() {
     if (statusValue === 'custom') return customStatus || 'Custom status'
     return STATUS_PRESETS.find(s => s.value === statusValue)?.label || 'Available'
   }
-  const getStatusIcon = () => STATUS_PRESETS.find(s => s.value === statusValue)?.icon || '🟢'
+  const getStatusIcon = () => STATUS_PRESETS.find(s => s.value === statusValue)?.icon || <Circle size={14} fill="#25d366" style={{ color: '#25d366' }} />
 
   const formatDate = (d) => d
     ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -273,7 +287,7 @@ function Profile() {
     } finally { setSavingStatus(false) }
   }
 
-  // ── Avatar save (dedicated call, never mixed with text profile save) ──
+  // ── Avatar save ──
   const handleAvatarSave = async (file, preview) => {
     if (file === 'remove') {
       const fallback = generateAvatar(currentUser?.name || 'U')
@@ -327,8 +341,9 @@ function Profile() {
       <div className='profile-page'>
         {/* ── Back Button ── */}
         <button className='profile-back-btn' onClick={() => navigate(-1)}>
-          ← Back
+          <ArrowLeft size={18} /> Back
         </button>
+
         {/* ── Hero ── */}
         <div className='profile-hero'>
           <div className='profile-hero-bg' />
@@ -342,7 +357,7 @@ function Profile() {
                     className='profile-avatar'
                   />
                   <button className='avatar-edit-btn' onClick={() => setShowAvatarModal(true)} title='Change photo'>
-                    📷
+                    <Camera size={13} />
                   </button>
                   <span className={`presence-dot ${isOnline ? 'online' : 'offline'}`} />
                 </>
@@ -360,7 +375,7 @@ function Profile() {
                   <h1 className='profile-hero-name'>{currentUser?.name}</h1>
                   <p className='profile-hero-email'>{currentUser?.email}</p>
                   <div className='profile-hero-status'>
-                    <span>{getStatusIcon()}</span>
+                    <span className='profile-status-icon'>{getStatusIcon()}</span>
                     <span className='status-text-sm'>{getStatusLabel()}</span>
                   </div>
                   <div className='profile-badges'>
@@ -413,16 +428,27 @@ function Profile() {
         {/* ── Body ── */}
         <div className='profile-body'>
 
+          {/* PROFILE TAB */}
           {activeTab === 'Profile' && (
             <div className='tab-panel'>
-              {saveError   && <div className='alert error'>{saveError}</div>}
-              {saveSuccess && <div className='alert success'>✓ Profile saved successfully!</div>}
+              {saveError   && (
+                <div className='alert error'>
+                  <AlertCircle size={14} style={{ flexShrink: 0 }} /> {saveError}
+                </div>
+              )}
+              {saveSuccess && (
+                <div className='alert success'>
+                  <CheckCircle size={14} style={{ flexShrink: 0 }} /> Profile saved successfully!
+                </div>
+              )}
 
               <div className='info-card'>
                 <div className='card-header'>
                   <span className='card-title'>Personal Information</span>
                   {!editing && (
-                    <button className='card-edit-btn' onClick={() => setEditing(true)}>✏️ Edit</button>
+                    <button className='card-edit-btn' onClick={() => setEditing(true)}>
+                      <Pencil size={12} /> Edit
+                    </button>
                   )}
                 </div>
 
@@ -467,7 +493,7 @@ function Profile() {
                 {editing && (
                   <div className='profile-actions'>
                     <button className='btn-primary' onClick={handleSave} disabled={saving}>
-                      {saving ? <><span className='spinner' /> Saving…</> : '✓ Save Changes'}
+                      {saving ? <><span className='spinner' /> Saving…</> : <><CheckCircle size={14} /> Save Changes</>}
                     </button>
                     <button className='btn-ghost' onClick={() => {
                       setEditing(false); setSaveError(null)
@@ -478,14 +504,24 @@ function Profile() {
                 )}
               </div>
 
-              {saveStatusError   && <div className='alert error'>{saveStatusError}</div>}
-              {saveStatusSuccess && <div className='alert success'>✓ Status saved!</div>}
+              {saveStatusError   && (
+                <div className='alert error'>
+                  <AlertCircle size={14} style={{ flexShrink: 0 }} /> {saveStatusError}
+                </div>
+              )}
+              {saveStatusSuccess && (
+                <div className='alert success'>
+                  <CheckCircle size={14} style={{ flexShrink: 0 }} /> Status saved!
+                </div>
+              )}
 
               <div className='info-card'>
                 <div className='card-header'>
                   <span className='card-title'>Status Message</span>
                   {!editingStatus && (
-                    <button className='card-edit-btn' onClick={() => setEditingStatus(true)}>✏️ Edit</button>
+                    <button className='card-edit-btn' onClick={() => setEditingStatus(true)}>
+                      <Pencil size={12} /> Edit
+                    </button>
                   )}
                 </div>
 
@@ -497,7 +533,7 @@ function Profile() {
                       onClick={() => { if (editingStatus) setStatusValue(s.value) }}
                       disabled={!editingStatus}
                     >
-                      <span>{s.icon}</span>
+                      <span className='status-chip-icon'>{s.icon}</span>
                       <span>{s.label}</span>
                     </button>
                   ))}
@@ -511,7 +547,7 @@ function Profile() {
 
                 {!editingStatus && (
                   <div className='current-status-display'>
-                    <span>{getStatusIcon()}</span>
+                    <span className='profile-status-icon'>{getStatusIcon()}</span>
                     <span>{getStatusLabel()}</span>
                   </div>
                 )}
@@ -519,7 +555,7 @@ function Profile() {
                 {editingStatus && (
                   <div className='profile-actions'>
                     <button className='btn-primary' onClick={handleStatusSave} disabled={savingStatus}>
-                      {savingStatus ? <><span className='spinner' /> Saving…</> : '✓ Save Status'}
+                      {savingStatus ? <><span className='spinner' /> Saving…</> : <><CheckCircle size={14} /> Save Status</>}
                     </button>
                     <button className='btn-ghost' onClick={() => {
                       setEditingStatus(false); setSaveStatusError(null)
@@ -535,17 +571,21 @@ function Profile() {
           {/* PRIVACY TAB */}
           {activeTab === 'Privacy' && (
             <div className='tab-panel'>
-              {privacySuccess && <div className='alert success'>✓ Privacy settings updated!</div>}
+              {privacySuccess && (
+                <div className='alert success'>
+                  <CheckCircle size={14} style={{ flexShrink: 0 }} /> Privacy settings updated!
+                </div>
+              )}
 
               <div className='info-card'>
                 <div className='card-header'><span className='card-title'>Visibility Controls</span></div>
                 <p className='card-subtitle'>Control who can see your information</p>
                 <div className='privacy-list'>
-                  <PrivacyRow icon='🖼️' label='Profile Photo'
+                  <PrivacyRow icon={<ImageIcon size={16} />} label='Profile Photo'
                     value={privacy.profilePhoto} onChange={v => setPrivacy(p => ({ ...p, profilePhoto: v }))} />
-                  <PrivacyRow icon='🕐' label='Last Seen'
+                  <PrivacyRow icon={<Eye size={16} />} label='Last Seen'
                     value={privacy.lastSeen} onChange={v => setPrivacy(p => ({ ...p, lastSeen: v }))} />
-                  <PrivacyRow icon='🌐' label='Online Status'
+                  <PrivacyRow icon={<Shield size={16} />} label='Online Status'
                     value={privacy.onlineStatus} onChange={v => setPrivacy(p => ({ ...p, onlineStatus: v }))} />
                 </div>
               </div>
@@ -554,21 +594,21 @@ function Profile() {
                 <div className='card-header'><span className='card-title'>Communication Controls</span></div>
                 <p className='card-subtitle'>Manage who can reach out to you</p>
                 <div className='privacy-list'>
-                  <PrivacyRow icon='👥' label='Add Me to Groups'
+                  <PrivacyRow icon={<Users size={16} />} label='Add Me to Groups'
                     value={privacy.addToGroups} onChange={v => setPrivacy(p => ({ ...p, addToGroups: v }))} />
-                  <PrivacyRow icon='💬' label='Message Me'
+                  <PrivacyRow icon={<MessageCircle size={16} />} label='Message Me'
                     value={privacy.messages} onChange={v => setPrivacy(p => ({ ...p, messages: v }))} />
                 </div>
               </div>
 
               <div className='privacy-note'>
-                <span>🔒</span>
+                <Lock size={15} style={{ flexShrink: 0, color: 'var(--color-primary)' }} />
                 <p>Privacy changes take effect immediately without requiring logout.</p>
               </div>
 
               <div className='profile-actions'>
                 <button className='btn-primary' onClick={handlePrivacySave} disabled={privacySaving}>
-                  {privacySaving ? <><span className='spinner' /> Saving…</> : '✓ Save Privacy Settings'}
+                  {privacySaving ? <><span className='spinner' /> Saving…</> : <><CheckCircle size={14} /> Save Privacy Settings</>}
                 </button>
               </div>
             </div>
@@ -580,10 +620,30 @@ function Profile() {
               <div className='info-card'>
                 <div className='card-header'><span className='card-title'>Activity Overview</span></div>
                 <div className='stats-grid'>
-                  <StatCard icon='💬' label='Messages Sent'  value={stats.messagesSent?.toLocaleString()}  loading={statsLoading} />
-                  <StatCard icon='👥' label='Groups Joined'  value={stats.groupsJoined?.toLocaleString()}  loading={statsLoading} />
-                  <StatCard icon='📎' label='Files Shared'   value={stats.filesShared?.toLocaleString()}   loading={statsLoading} />
-                  <StatCard icon='🖼️' label='Media Shared'   value={stats.mediaShared?.toLocaleString()}   loading={statsLoading} />
+                  <StatCard
+                    icon={<MessageCircle size={22} style={{ color: 'var(--color-primary)' }} />}
+                    label='Messages Sent'
+                    value={stats.messagesSent?.toLocaleString()}
+                    loading={statsLoading}
+                  />
+                  <StatCard
+                    icon={<Users size={22} style={{ color: 'var(--color-primary)' }} />}
+                    label='Groups Joined'
+                    value={stats.groupsJoined?.toLocaleString()}
+                    loading={statsLoading}
+                  />
+                  <StatCard
+                    icon={<Paperclip size={22} style={{ color: 'var(--color-primary)' }} />}
+                    label='Files Shared'
+                    value={stats.filesShared?.toLocaleString()}
+                    loading={statsLoading}
+                  />
+                  <StatCard
+                    icon={<ImageIcon size={22} style={{ color: 'var(--color-primary)' }} />}
+                    label='Media Shared'
+                    value={stats.mediaShared?.toLocaleString()}
+                    loading={statsLoading}
+                  />
                 </div>
               </div>
 
@@ -632,7 +692,7 @@ function Profile() {
                   </div>
                 ) : blockedUsers.length === 0 ? (
                   <div className='empty-state'>
-                    <span className='empty-icon'>🚫</span>
+                    <Ban size={40} className='empty-state-icon' />
                     <p className='empty-title'>No blocked users</p>
                     <p className='empty-sub'>Users you block will appear here.</p>
                   </div>
@@ -665,7 +725,7 @@ function Profile() {
               </div>
 
               <div className='privacy-note warning'>
-                <span>⚠️</span>
+                <AlertTriangle size={15} style={{ flexShrink: 0, color: 'var(--color-error)' }} />
                 <p>Unblocking restores full communication permissions immediately.</p>
               </div>
             </div>

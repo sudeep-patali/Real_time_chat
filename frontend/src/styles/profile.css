@@ -519,6 +519,34 @@
 
 .privacy-icon { font-size: 18px; }
 
+/* Lucide icon wrappers */
+.privacy-row-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.profile-status-icon {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.status-chip-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.modal-drag-hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 0 20px 4px;
+  margin: 0;
+}
+
 .privacy-label {
   font-size: 14px;
   color: var(--color-text);
