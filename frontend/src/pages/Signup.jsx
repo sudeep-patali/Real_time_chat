@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { User, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { validateSignup } from '../utils/validateForm'
+import '../styles/auth.css'
 
 function Signup() {
   const [name, setName] = useState('')
@@ -9,6 +11,8 @@ function Signup() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   const { signup, loading, error } = useAuth()
 
@@ -24,173 +28,140 @@ function Signup() {
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>WHEELTRIX</h1>
-        <p style={styles.subtitle}>Create your account</p>
+    <div className='auth-shell'>
+      <div className='auth-card'>
 
-        {error && <p style={styles.error}>{error}</p>}
+        <div className='auth-logo-wrap'>
+          <div className='auth-logo-icon'>W</div>
+          <span className='auth-logo'>Wheeltrix</span>
+          <p className='auth-subtitle'>Create your account</p>
+        </div>
 
-        {/* FIX Issue 5: use <form> with onSubmit; add id+name to every input */}
-        <form style={styles.form} onSubmit={handleSubmit} noValidate>
-          <div style={styles.field}>
-            <label htmlFor='signup-name' style={styles.srOnly}>Full Name</label>
-            <input
-              id='signup-name'
-              name='name'
-              style={styles.input}
-              type='text'
-              placeholder='Full Name'
-              value={name}
-              onChange={e => setName(e.target.value)}
-              autoComplete='name'
-            />
-            {fieldErrors.name && <p style={styles.fieldError}>{fieldErrors.name}</p>}
+        {error && (
+          <div className='auth-error-banner'>
+            <AlertCircle size={14} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form className='auth-form' onSubmit={handleSubmit} noValidate>
+
+          <div className='auth-field'>
+            <label htmlFor='signup-name' className='sr-only'>Full Name</label>
+            <div className='auth-field-inner'>
+              <span className='auth-field-icon'>
+                <User size={16} />
+              </span>
+              <input
+                id='signup-name'
+                name='name'
+                className={`auth-input${fieldErrors.name ? ' error' : ''}`}
+                type='text'
+                placeholder='Full Name'
+                value={name}
+                onChange={e => setName(e.target.value)}
+                autoComplete='name'
+              />
+            </div>
+            <span className='auth-field-error'>{fieldErrors.name || ''}</span>
           </div>
 
-          <div style={styles.field}>
-            <label htmlFor='signup-email' style={styles.srOnly}>Email</label>
-            <input
-              id='signup-email'
-              name='email'
-              style={styles.input}
-              type='email'
-              placeholder='Email'
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              autoComplete='email'
-            />
-            {fieldErrors.email && <p style={styles.fieldError}>{fieldErrors.email}</p>}
+          <div className='auth-field'>
+            <label htmlFor='signup-email' className='sr-only'>Email</label>
+            <div className='auth-field-inner'>
+              <span className='auth-field-icon'>
+                <Mail size={16} />
+              </span>
+              <input
+                id='signup-email'
+                name='email'
+                className={`auth-input${fieldErrors.email ? ' error' : ''}`}
+                type='email'
+                placeholder='Email'
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                autoComplete='email'
+              />
+            </div>
+            <span className='auth-field-error'>{fieldErrors.email || ''}</span>
           </div>
 
-          <div style={styles.field}>
-            <label htmlFor='signup-password' style={styles.srOnly}>Password</label>
-            <input
-              id='signup-password'
-              name='password'
-              style={styles.input}
-              type='password'
-              placeholder='Password'
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              autoComplete='new-password'
-            />
-            {fieldErrors.password && <p style={styles.fieldError}>{fieldErrors.password}</p>}
+          <div className='auth-field'>
+            <label htmlFor='signup-password' className='sr-only'>Password</label>
+            <div className='auth-field-inner'>
+              <span className='auth-field-icon'>
+                <Lock size={16} />
+              </span>
+              <input
+                id='signup-password'
+                name='password'
+                className={`auth-input has-toggle${fieldErrors.password ? ' error' : ''}`}
+                type={showPassword ? 'text' : 'password'}
+                placeholder='Password'
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                autoComplete='new-password'
+              />
+              <button
+                type='button'
+                className='auth-password-toggle'
+                onClick={() => setShowPassword(v => !v)}
+                tabIndex={-1}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <span className='auth-field-error'>{fieldErrors.password || ''}</span>
           </div>
 
-          <div style={styles.field}>
-            <label htmlFor='signup-confirm-password' style={styles.srOnly}>Confirm Password</label>
-            <input
-              id='signup-confirm-password'
-              name='confirmPassword'
-              style={styles.input}
-              type='password'
-              placeholder='Confirm Password'
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              autoComplete='new-password'
-            />
-            {fieldErrors.confirmPassword && <p style={styles.fieldError}>{fieldErrors.confirmPassword}</p>}
+          <div className='auth-field'>
+            <label htmlFor='signup-confirm-password' className='sr-only'>Confirm Password</label>
+            <div className='auth-field-inner'>
+              <span className='auth-field-icon'>
+                <Lock size={16} />
+              </span>
+              <input
+                id='signup-confirm-password'
+                name='confirmPassword'
+                className={`auth-input has-toggle${fieldErrors.confirmPassword ? ' error' : ''}`}
+                type={showConfirm ? 'text' : 'password'}
+                placeholder='Confirm Password'
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                autoComplete='new-password'
+              />
+              <button
+                type='button'
+                className='auth-password-toggle'
+                onClick={() => setShowConfirm(v => !v)}
+                tabIndex={-1}
+                aria-label={showConfirm ? 'Hide password' : 'Show password'}
+              >
+                {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <span className='auth-field-error'>{fieldErrors.confirmPassword || ''}</span>
           </div>
 
           <button
             type='submit'
-            style={styles.button}
+            className='auth-btn'
             disabled={loading}
           >
-            {loading ? 'Creating account...' : 'Sign Up'}
+            {loading ? 'Creating account…' : 'Sign Up'}
           </button>
+
         </form>
 
-        <p style={styles.link}>
-          Already have an account? <Link to='/login'>Sign in</Link>
+        <p className='auth-footer'>
+          Already have an account?{' '}
+          <Link to='/login'>Sign in</Link>
         </p>
+
       </div>
     </div>
   )
-}
-
-const styles = {
-  container: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'var(--color-bg)',
-    padding: '16px',
-  },
-  card: {
-    backgroundColor: 'var(--color-surface)',
-    padding: '40px',
-    borderRadius: '16px',
-    width: '100%',
-    maxWidth: '400px',
-    border: '1px solid var(--color-border)',
-  },
-  title: {
-    color: 'var(--color-primary)',
-    fontSize: '24px',
-    fontWeight: '700',
-    marginBottom: '8px',
-  },
-  subtitle: {
-    color: 'var(--color-text-muted)',
-    marginBottom: '24px',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-  },
-  // Visually hidden label — accessible but not visible
-  srOnly: {
-    position: 'absolute',
-    width: 1, height: 1,
-    padding: 0, margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0,0,0,0)',
-    whiteSpace: 'nowrap',
-    border: 0,
-  },
-  input: {
-    padding: '12px 16px',
-    borderRadius: '8px',
-    backgroundColor: 'var(--color-bg)',
-    border: '1px solid var(--color-border)',
-    color: 'var(--color-text)',
-    fontSize: '14px',
-  },
-  button: {
-    padding: '12px',
-    borderRadius: '8px',
-    backgroundColor: 'var(--color-primary)',
-    color: '#fff',
-    fontSize: '15px',
-    fontWeight: '600',
-    marginTop: '8px',
-    border: 'none',
-    cursor: 'pointer',
-  },
-  error: {
-    color: 'var(--color-error)',
-    marginBottom: '16px',
-    fontSize: '13px',
-  },
-  fieldError: {
-    color: 'var(--color-error)',
-    fontSize: '12px',
-  },
-  link: {
-    marginTop: '24px',
-    textAlign: 'center',
-    color: 'var(--color-text-muted)',
-    fontSize: '13px',
-  }
 }
 
 export default Signup

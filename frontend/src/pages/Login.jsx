@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { validateLogin } from '../utils/validateForm'
+import '../styles/auth.css'
 
 function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
+  const [showPassword, setShowPassword] = useState(false)
 
   const { login, loading, error } = useAuth()
 
@@ -22,143 +25,91 @@ function Login() {
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>WHEELTRIX</h1>
-        <p style={styles.subtitle}>Sign in to continue</p>
+    <div className='auth-shell'>
+      <div className='auth-card'>
 
-        {error && <p style={styles.error}>{error}</p>}
+        <div className='auth-logo-wrap'>
+          <div className='auth-logo-icon'>W</div>
+          <span className='auth-logo'>Wheeltrix</span>
+          <p className='auth-subtitle'>Connect. Message. Collaborate.</p>
+        </div>
 
-        {/* FIX Issue 5: use <form> with onSubmit; add id+name to every input */}
-        <form style={styles.form} onSubmit={handleSubmit} noValidate>
-          <div style={styles.field}>
-            <label htmlFor='login-email' style={styles.srOnly}>Email</label>
-            <input
-              id='login-email'
-              name='email'
-              style={styles.input}
-              type='email'
-              placeholder='Email'
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              autoComplete='email'
-            />
-            {fieldErrors.email && <p style={styles.fieldError}>{fieldErrors.email}</p>}
+        {error && (
+          <div className='auth-error-banner'>
+            <AlertCircle size={14} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form className='auth-form' onSubmit={handleSubmit} noValidate>
+
+          <div className='auth-field'>
+            <label htmlFor='login-email' className='sr-only'>Email</label>
+            <div className='auth-field-inner'>
+              <span className='auth-field-icon'>
+                <Mail size={16} />
+              </span>
+              <input
+                id='login-email'
+                name='email'
+                className={`auth-input${fieldErrors.email ? ' error' : ''}`}
+                type='email'
+                placeholder='Email'
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                autoComplete='email'
+              />
+            </div>
+            <span className='auth-field-error'>{fieldErrors.email || ''}</span>
           </div>
 
-          <div style={styles.field}>
-            <label htmlFor='login-password' style={styles.srOnly}>Password</label>
-            <input
-              id='login-password'
-              name='password'
-              style={styles.input}
-              type='password'
-              placeholder='Password'
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              autoComplete='current-password'
-            />
-            {fieldErrors.password && <p style={styles.fieldError}>{fieldErrors.password}</p>}
+          <div className='auth-field'>
+            <label htmlFor='login-password' className='sr-only'>Password</label>
+            <div className='auth-field-inner'>
+              <span className='auth-field-icon'>
+                <Lock size={16} />
+              </span>
+              <input
+                id='login-password'
+                name='password'
+                className={`auth-input has-toggle${fieldErrors.password ? ' error' : ''}`}
+                type={showPassword ? 'text' : 'password'}
+                placeholder='Password'
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                autoComplete='current-password'
+              />
+              <button
+                type='button'
+                className='auth-password-toggle'
+                onClick={() => setShowPassword(v => !v)}
+                tabIndex={-1}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            <span className='auth-field-error'>{fieldErrors.password || ''}</span>
           </div>
 
           <button
             type='submit'
-            style={styles.button}
+            className='auth-btn'
             disabled={loading}
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? 'Signing in…' : 'Sign In'}
           </button>
+
         </form>
 
-        <p style={styles.link}>
-          Don't have an account? <Link to='/signup'>Sign up</Link>
+        <p className='auth-footer'>
+          Don&apos;t have an account?{' '}
+          <Link to='/signup'>Sign up</Link>
         </p>
+
       </div>
     </div>
   )
-}
-
-const styles = {
-  container: {
-    minHeight: '100vh',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'var(--color-bg)',
-    padding: '16px',
-  },
-  card: {
-    backgroundColor: 'var(--color-surface)',
-    padding: '40px',
-    borderRadius: '16px',
-    width: '100%',
-    maxWidth: '400px',
-    border: '1px solid var(--color-border)',
-  },
-  title: {
-    color: 'var(--color-primary)',
-    fontSize: '24px',
-    fontWeight: '700',
-    marginBottom: '8px',
-  },
-  subtitle: {
-    color: 'var(--color-text-muted)',
-    marginBottom: '24px',
-  },
-  form: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-  },
-  // Visually hidden label — accessible but not visible
-  srOnly: {
-    position: 'absolute',
-    width: 1, height: 1,
-    padding: 0, margin: -1,
-    overflow: 'hidden',
-    clip: 'rect(0,0,0,0)',
-    whiteSpace: 'nowrap',
-    border: 0,
-  },
-  input: {
-    padding: '12px 16px',
-    borderRadius: '8px',
-    backgroundColor: 'var(--color-bg)',
-    border: '1px solid var(--color-border)',
-    color: 'var(--color-text)',
-    fontSize: '14px',
-  },
-  button: {
-    padding: '12px',
-    borderRadius: '8px',
-    backgroundColor: 'var(--color-primary)',
-    color: '#fff',
-    fontSize: '15px',
-    fontWeight: '600',
-    marginTop: '8px',
-    border: 'none',
-    cursor: 'pointer',
-  },
-  error: {
-    color: 'var(--color-error)',
-    marginBottom: '16px',
-    fontSize: '13px',
-  },
-  fieldError: {
-    color: 'var(--color-error)',
-    fontSize: '12px',
-  },
-  link: {
-    marginTop: '24px',
-    textAlign: 'center',
-    color: 'var(--color-text-muted)',
-    fontSize: '13px',
-  }
 }
 
 export default Login

@@ -26,6 +26,13 @@
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.12);
   --shadow-md: 0 2px 8px rgba(0,0,0,0.18);
   --shadow-lg: 0 4px 20px rgba(0,0,0,0.25);
+
+  /* Z-index scale */
+  --z-dropdown: 100;
+  --z-overlay:  150;
+  --z-panel:    160;
+  --z-modal:    200;
+  --z-toast:    9999;
 }
 
 /* ── Dark Theme (default) ── */
@@ -36,14 +43,14 @@ body.dark {
   --color-primary-light: rgba(0,168,132,0.15);
 
   /* Backgrounds */
-  --color-bg:        #111b21;   /* main app bg — deep navy */
-  --color-surface:   #202c33;   /* sidebar & panels */
-  --color-surface-2: #2a3942;   /* hover states, elevated panels */
-  --color-surface-3: #182229;   /* chat area bg */
+  --color-bg:        #111b21;
+  --color-surface:   #202c33;
+  --color-surface-2: #2a3942;
+  --color-surface-3: #182229;
 
   /* Bubble colors */
-  --color-bubble-out:    #005c4b;   /* sent messages */
-  --color-bubble-in:     #202c33;   /* received messages */
+  --color-bubble-out:    #005c4b;
+  --color-bubble-in:     #202c33;
   --color-bubble-out-hover: #006655;
   --color-bubble-in-hover:  #2a3942;
 
@@ -74,6 +81,14 @@ body.dark {
   /* Active conversation highlight */
   --color-active-bg:  #2a3942;
   --color-active-border: #00a884;
+
+  /* New tokens */
+  --color-modal-bg:        #233138;
+  --color-tag-bg:          #182229;
+  --color-btn-ghost-hover: rgba(255,255,255,0.06);
+  --color-input-focus:     rgba(0,168,132,0.25);
+  --color-skeleton-base:   #2a3942;
+  --color-skeleton-shine:  #3a4d58;
 }
 
 /* ── Light Theme ── */
@@ -87,11 +102,11 @@ body.light {
   --color-bg:        #f0f2f5;
   --color-surface:   #ffffff;
   --color-surface-2: #f5f6f6;
-  --color-surface-3: #efeae2;   /* classic WhatsApp chat bg */
+  --color-surface-3: #efeae2;
 
   /* Bubble colors */
-  --color-bubble-out:    #d9fdd3;  /* sent — soft green */
-  --color-bubble-in:     #ffffff;  /* received — white */
+  --color-bubble-out:    #d9fdd3;
+  --color-bubble-in:     #ffffff;
   --color-bubble-out-hover: #c8f9bf;
   --color-bubble-in-hover:  #f7f7f7;
 
@@ -122,6 +137,14 @@ body.light {
   /* Active conversation highlight */
   --color-active-bg:  #f0f2f5;
   --color-active-border: #00a884;
+
+  /* New tokens */
+  --color-modal-bg:        #ffffff;
+  --color-tag-bg:          #f0f2f5;
+  --color-btn-ghost-hover: rgba(0,0,0,0.05);
+  --color-input-focus:     rgba(0,168,132,0.2);
+  --color-skeleton-base:   #e9edef;
+  --color-skeleton-shine:  #f0f2f5;
 }
 
 /* ── Base ── */
@@ -134,6 +157,7 @@ html, body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 #root {
@@ -201,6 +225,7 @@ input, textarea {
   background: var(--color-primary-light);
   color: var(--color-text);
 }
+
 /* ── Settings-specific CSS variables ── */
 body.dark, body.light {
   --color-surface-settings: var(--color-surface);
@@ -228,4 +253,37 @@ body.compact {
   --spacing-sm:  4px;
   --spacing-md:  10px;
   --spacing-lg:  16px;
+}
+
+/* ── Skeleton shimmer ── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--color-skeleton-base) 25%,
+    var(--color-skeleton-shine) 50%,
+    var(--color-skeleton-base) 75%
+  );
+  background-size: 800px 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+  border-radius: 6px;
+}
+
+/* ── Slide-in animation ── */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }

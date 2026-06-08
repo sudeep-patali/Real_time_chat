@@ -1,5 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  MessageSquarePlus,
+  Bell,
+  MoreVertical,
+  Search,
+  X,
+  ArrowLeft,
+  User,
+  Settings,
+  Users,
+  LogOut,
+  UserPlus,
+  ImageIcon,
+  Video,
+  Mic,
+  Paperclip,
+  Film,
+  MessageCircle,
+} from 'lucide-react'
 import { useChatStore } from '../store/chatStore'
 import { useNotificationStore } from '../store/notificationStore'
 import { useUiStore } from '../store/uiStore'
@@ -16,20 +35,39 @@ function getLastMessagePreview(lastMessage) {
   if (!lastMessage) return 'No messages yet'
   const { type, content, fileName } = lastMessage
   switch (type) {
-    case 'image':    return '📷 Photo'
-    case 'gif':      return '🎞️ GIF'
-    case 'video':    return '🎥 Video'
-    case 'audio':    return '🎤 Voice message'
+    case 'image':    return { icon: 'image',  text: 'Photo' }
+    case 'gif':      return { icon: 'gif',    text: 'GIF' }
+    case 'video':    return { icon: 'video',  text: 'Video' }
+    case 'audio':    return { icon: 'audio',  text: 'Voice message' }
     case 'file':
     case 'document': {
       const name = fileName
         || (content && !content.startsWith('http') ? content : null)
         || (content ? content.split('/').pop().split('?')[0] : null)
         || 'File'
-      return `📎 ${name}`
+      return { icon: 'file', text: `File: ${name}` }
     }
     default: return content || 'No messages yet'
   }
+}
+
+function PreviewContent({ preview }) {
+  if (!preview || typeof preview === 'string') {
+    return <span>{preview}</span>
+  }
+  const iconMap = {
+    image: <ImageIcon size={12} />,
+    gif:   <Film size={12} />,
+    video: <Video size={12} />,
+    audio: <Mic size={12} />,
+    file:  <Paperclip size={12} />,
+  }
+  return (
+    <>
+      <span className='room-preview-icon'>{iconMap[preview.icon]}</span>
+      <span>{preview.text}</span>
+    </>
+  )
 }
 
 function Sidebar() {
@@ -66,7 +104,7 @@ function Sidebar() {
   const handleRoomClick = (room) => {
     const rid = room.id || room._id
     setActiveRoom(rid)
-    clearUnread(rid?.toString())           // immediately clear badge
+    clearUnread(rid?.toString())
     navigate(room.isGroup ? `/group/${rid}` : `/chat/${rid}`)
     closeSidebar()
   }
@@ -117,66 +155,104 @@ function Sidebar() {
 
         {/* ── Sidebar Header ─────────────────────────────────────────── */}
         <div className='sidebar-header'>
-          <img src={avatarSrc} alt={currentUser?.name || 'You'} className='sidebar-header-avatar'
-            title='View photo' onClick={() => setShowAvatarPreview(true)} style={{ cursor: 'pointer' }} />
+          <img
+            src={avatarSrc}
+            alt={currentUser?.name || 'You'}
+            className='sidebar-header-avatar'
+            title='View photo'
+            onClick={() => setShowAvatarPreview(true)}
+          />
 
           <div className='sidebar-header-actions'>
 
-            <button className='sidebar-header-icon' title='New Chat' onClick={() => navigate('/find-people')}>
-              ✏️
+            <button
+              className='sidebar-header-icon'
+              title='New Chat'
+              onClick={() => navigate('/find-people')}
+            >
+              <MessageSquarePlus size={20} />
             </button>
 
             {/* Notification bell with badge */}
-            <button className='sidebar-header-icon' title='Notifications'
-              onClick={() => setShowNotifications(true)} style={{ position: 'relative' }}>
-              🔔
+            <button
+              className='sidebar-header-icon sidebar-bell-btn'
+              title='Notifications'
+              onClick={() => setShowNotifications(true)}
+            >
+              <Bell size={20} />
               {unreadNotifications > 0 && (
-                <span style={styles.bellBadge}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</span>
+                <span className='sidebar-bell-badge'>
+                  {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                </span>
               )}
             </button>
 
             {/* Three-dot menu */}
-            <div ref={menuRef} style={styles.menuWrapper}>
-              <button className='sidebar-header-icon' title='Menu' onClick={() => setShowMenu(p => !p)}>⋮</button>
+            <div ref={menuRef} className='sidebar-menu-wrap'>
+              <button
+                className='sidebar-header-icon'
+                title='Menu'
+                onClick={() => setShowMenu(p => !p)}
+              >
+                <MoreVertical size={20} />
+              </button>
+
               {showMenu && (
-                <div style={styles.dropdown}>
-                  <div style={styles.dropdownArrow} />
-                  {[
-                    { icon: '👤', label: 'Profile',      fn: handleProfile },
-                    { icon: '⚙️', label: 'Settings',     fn: handleSettings },
-                    { icon: '👥', label: 'Create Group',  fn: () => { setShowMenu(false); navigate('/create-group') } },
-                  ].map(item => (
-                    <button key={item.label} style={styles.menuItem} onClick={item.fn}
-                      onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--color-surface-2)'}
-                      onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}>
-                      <span style={styles.menuIcon}>{item.icon}</span>
-                      <span>{item.label}</span>
-                    </button>
-                  ))}
-                  <div style={styles.divider} />
-                  <button style={styles.menuItem} onClick={handleLogout}
-                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.08)'; e.currentTarget.style.color = '#ef4444' }}
-                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--color-text)' }}>
-                    <span style={styles.menuIcon}>🚪</span>
+                <div className='dropdown-menu sidebar-dropdown'>
+                  <button className='dropdown-item' onClick={handleProfile}>
+                    <User size={16} />
+                    <span>Profile</span>
+                  </button>
+                  <button className='dropdown-item' onClick={handleSettings}>
+                    <Settings size={16} />
+                    <span>Settings</span>
+                  </button>
+                  <button
+                    className='dropdown-item'
+                    onClick={() => { setShowMenu(false); navigate('/create-group') }}
+                  >
+                    <Users size={16} />
+                    <span>Create Group</span>
+                  </button>
+                  <div className='dropdown-separator' />
+                  <button className='dropdown-item danger' onClick={handleLogout}>
+                    <LogOut size={16} />
                     <span>Logout</span>
                   </button>
                 </div>
               )}
             </div>
+
           </div>
         </div>
 
         {/* ── Avatar lightbox ────────────────────────────────────────── */}
         {showAvatarPreview && (
-          <div style={styles.lightboxOverlay} onClick={() => setShowAvatarPreview(false)}>
-            <div style={styles.lightboxBox} onClick={e => e.stopPropagation()}>
-              <div style={styles.lightboxTopBar}>
-                <button style={styles.lightboxBackBtn} onClick={() => setShowAvatarPreview(false)}>← Back</button>
-                <span style={styles.lightboxTitle}>Profile Photo</span>
-                <button style={styles.lightboxCloseBtn} onClick={() => setShowAvatarPreview(false)}>✕</button>
+          <div className='sidebar-lightbox-overlay' onClick={() => setShowAvatarPreview(false)}>
+            <div className='sidebar-lightbox-box' onClick={e => e.stopPropagation()}>
+              <div className='sidebar-lightbox-topbar'>
+                <button
+                  className='btn btn-ghost btn-sm'
+                  onClick={() => setShowAvatarPreview(false)}
+                >
+                  <ArrowLeft size={18} />
+                  Back
+                </button>
+                <span className='sidebar-lightbox-name' style={{ fontWeight: 600 }}>Profile Photo</span>
+                <button
+                  className='btn btn-ghost btn-icon-sm'
+                  onClick={() => setShowAvatarPreview(false)}
+                  aria-label='Close'
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <p style={styles.lightboxName}>{currentUser?.name || 'You'}</p>
-              <img src={avatarSrc} alt={currentUser?.name} style={styles.lightboxImg} />
+              <p className='sidebar-lightbox-username'>{currentUser?.name || 'You'}</p>
+              <img
+                src={avatarSrc}
+                alt={currentUser?.name}
+                className='sidebar-lightbox-img'
+              />
             </div>
           </div>
         )}
@@ -187,14 +263,24 @@ function Sidebar() {
         {/* ── Search ────────────────────────────────────────────────── */}
         <div className='sidebar-search'>
           <div className='sidebar-search-inner'>
-            <span className='sidebar-search-icon'>🔍</span>
-            <input type='text' placeholder='Search or start new chat'
-              value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              autoComplete='off' spellCheck={false} />
+            <span className='sidebar-search-icon'>
+              <Search size={15} />
+            </span>
+            <input
+              type='text'
+              placeholder='Search or start new chat'
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              autoComplete='off'
+              spellCheck={false}
+            />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')}
-                style={{ background: 'none', border: 'none', color: 'var(--color-text-dim)', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>
-                ✕
+              <button
+                className='sidebar-search-clear'
+                onClick={() => setSearchQuery('')}
+                aria-label='Clear search'
+              >
+                <X size={14} />
               </button>
             )}
           </div>
@@ -205,25 +291,39 @@ function Sidebar() {
 
         {/* ── Message Requests ──────────────────────────────────────── */}
         {pendingRooms?.length > 0 && (
-          <div style={styles.requestsSection} onClick={() => navigate('/requests')}>
-            <span style={styles.requestsIcon}>📩</span>
-            <div style={styles.requestsInfo}>
-              <p style={styles.requestsTitle}>Message Requests</p>
-              <p style={styles.requestsSub}>{pendingRooms.length} pending request{pendingRooms.length > 1 ? 's' : ''}</p>
+          <div
+            className='sidebar-requests-row requests'
+            onClick={() => navigate('/requests')}
+          >
+            <span className='sidebar-requests-row-icon'>
+              <UserPlus size={20} />
+            </span>
+            <div className='sidebar-requests-info'>
+              <p className='sidebar-requests-title requests'>Message Requests</p>
+              <p className='sidebar-requests-sub'>
+                {pendingRooms.length} pending request{pendingRooms.length > 1 ? 's' : ''}
+              </p>
             </div>
-            <span style={styles.requestsBadge}>{pendingRooms.length}</span>
+            <span className='sidebar-badge-primary'>{pendingRooms.length}</span>
           </div>
         )}
 
         {/* ── Group Invitations ─────────────────────────────────────── */}
         {groupInvitations?.length > 0 && (
-          <div style={styles.groupInvitesSection} onClick={() => navigate('/group-invitations')}>
-            <span style={styles.requestsIcon}>👥</span>
-            <div style={styles.requestsInfo}>
-              <p style={styles.groupInvitesTitle}>Group Invitations</p>
-              <p style={styles.requestsSub}>{groupInvitations.length} pending invitation{groupInvitations.length > 1 ? 's' : ''}</p>
+          <div
+            className='sidebar-requests-row invites'
+            onClick={() => navigate('/group-invitations')}
+          >
+            <span className='sidebar-requests-row-icon'>
+              <Users size={20} />
+            </span>
+            <div className='sidebar-requests-info'>
+              <p className='sidebar-requests-title invites'>Group Invitations</p>
+              <p className='sidebar-requests-sub'>
+                {groupInvitations.length} pending invitation{groupInvitations.length > 1 ? 's' : ''}
+              </p>
             </div>
-            <span style={styles.groupInvitesBadge}>{groupInvitations.length}</span>
+            <span className='sidebar-badge-purple'>{groupInvitations.length}</span>
           </div>
         )}
 
@@ -231,64 +331,86 @@ function Sidebar() {
         <div className='room-list'>
           {rooms.length === 0 ? (
             <div className='sidebar-empty'>
-              <span className='sidebar-empty-icon'>💬</span>
+              <span className='sidebar-empty-icon'>
+                <MessageCircle size={40} strokeWidth={1.5} />
+              </span>
               <p>No conversations yet</p>
-              <p style={{ fontSize: 12, color: 'var(--color-text-dim)', marginTop: 4 }}>
-                Click ✏️ to start a new chat
+              <p className='sidebar-empty-hint'>
+                Tap the pencil icon to start a new chat
               </p>
             </div>
           ) : filteredRooms.length === 0 ? (
             <div className='sidebar-empty'>
-              <span className='sidebar-empty-icon'>🔍</span>
-              <p>No results for "{searchQuery}"</p>
+              <span className='sidebar-empty-icon'>
+                <Search size={40} strokeWidth={1.5} />
+              </span>
+              <p>No results for &ldquo;{searchQuery}&rdquo;</p>
             </div>
           ) : (
             filteredRooms.map(room => {
-              const rid       = room.id || room._id
-              const name      = getRoomDisplayName(room)
-              const avatar    = room.isGroup
+              const rid      = room.id || room._id
+              const name     = getRoomDisplayName(room)
+              const avatar   = room.isGroup
                 ? (room.groupAvatar || room.avatarUrl || generateAvatar(name))
                 : (room.otherUser?.avatar || room.avatarUrl || generateAvatar(name))
-              const unread    = unreadCounts[rid?.toString()] || 0
-              const isActive  = activeRoomId === rid
-              const online    = isUserOnline(room)
+              const unread   = unreadCounts[rid?.toString()] || 0
+              const isActive = activeRoomId === rid
+              const online   = isUserOnline(room)
+              const preview  = getLastMessagePreview(room.lastMessage)
 
               return (
-                <div key={rid}
+                <div
+                  key={rid}
                   className={`room-item ${isActive ? 'active' : ''} ${unread > 0 ? 'has-unread' : ''}`}
-                  onClick={() => handleRoomClick(room)}>
-
+                  onClick={() => handleRoomClick(room)}
+                >
                   <div className='room-avatar-wrap'>
                     <img src={avatar} alt={name} className='room-avatar' />
-                    {/* Online indicator for DMs */}
                     {!room.isGroup && (
-                      <span className='room-online-dot'
-                        style={{ background: online ? '#00a884' : 'transparent', border: online ? '2px solid var(--color-surface)' : 'none' }} />
+                      <span
+                        className='room-online-dot'
+                        style={{
+                          background: online ? '#00a884' : 'transparent',
+                          border: online ? '2px solid var(--color-surface)' : 'none',
+                        }}
+                      />
                     )}
-                    {room.isGroup && <span className='room-group-badge'>👥</span>}
+                    {room.isGroup && (
+                      <span className='room-group-badge'>
+                        <Users size={9} />
+                      </span>
+                    )}
                   </div>
 
                   <div className='room-info'>
                     <div className='room-header'>
-                      <span className='room-name' style={{ fontWeight: unread > 0 ? 700 : 500 }}>{name}</span>
-                      <span className='room-time'
-                        style={{ color: unread > 0 ? 'var(--color-primary)' : 'var(--color-text-dim)', fontWeight: unread > 0 ? 600 : 400 }}>
+                      <span className={`room-name ${unread > 0 ? 'room-name--bold' : ''}`}>
+                        {name}
+                      </span>
+                      <span className={`room-time ${unread > 0 ? 'room-time--unread' : ''}`}>
                         {formatDate(room.lastMessage?.timestamp || room.updatedAt)}
                       </span>
                     </div>
                     <div className='room-footer'>
-                      <span className='room-last-msg'
-                        style={{ fontWeight: unread > 0 ? 600 : 400, color: unread > 0 ? 'var(--color-text)' : 'var(--color-text-dim)' }}>
+                      <span className={`room-last-msg ${unread > 0 ? 'room-last-msg--unread' : ''}`}>
                         {room.isGroup && room.lastMessage?.senderName
-                          ? `${room.lastMessage.senderName}: ${getLastMessagePreview(room.lastMessage)}`
-                          : getLastMessagePreview(room.lastMessage)
+                          ? (
+                            <>
+                              <span>{room.lastMessage.senderName}: </span>
+                              <PreviewContent preview={preview} />
+                            </>
+                          )
+                          : <PreviewContent preview={preview} />
                         }
                       </span>
                       {unread > 0 && (
-                        <span className='unread-badge' style={{
-                          background: room.isMuted ? 'var(--color-text-dim)' : 'var(--color-primary)',
-                          animation: !room.isMuted ? 'badgePop 0.3s cubic-bezier(0.36,0.07,0.19,0.97)' : 'none',
-                        }}>
+                        <span
+                          className='unread-badge'
+                          style={{
+                            background: room.isMuted ? 'var(--color-text-dim)' : 'var(--color-primary)',
+                            animation: !room.isMuted ? 'badgePop 0.3s cubic-bezier(0.36,0.07,0.19,0.97)' : 'none',
+                          }}
+                        >
                           {unread > 99 ? '99+' : unread}
                         </span>
                       )}
@@ -311,33 +433,6 @@ function Sidebar() {
       `}</style>
     </>
   )
-}
-
-const styles = {
-  bellBadge: { position: 'absolute', top: 2, right: 2, backgroundColor: 'var(--color-primary)', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: 20, padding: '1px 4px', lineHeight: '14px', minWidth: 14, textAlign: 'center', pointerEvents: 'none' },
-  menuWrapper: { position: 'relative' },
-  dropdown: { position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 200, backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.3)', minWidth: 180, overflow: 'hidden', animation: 'fadeSlideIn 0.15s ease' },
-  dropdownArrow: { position: 'absolute', top: -6, right: 10, width: 12, height: 12, backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRight: 'none', borderBottom: 'none', transform: 'rotate(45deg)' },
-  menuItem: { width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', background: 'transparent', border: 'none', color: 'var(--color-text)', fontSize: 14, cursor: 'pointer', textAlign: 'left', transition: 'background-color 0.12s ease' },
-  menuIcon: { fontSize: 15, flexShrink: 0 },
-  divider: { height: 1, backgroundColor: 'var(--color-divider)' },
-  requestsSection: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', backgroundColor: 'rgba(0,168,132,0.06)', borderBottom: '1px solid var(--color-divider)', transition: 'background 0.15s' },
-  requestsIcon: { fontSize: 22, flexShrink: 0 },
-  requestsInfo: { flex: 1, minWidth: 0 },
-  requestsTitle: { fontSize: 14, fontWeight: 600, color: 'var(--color-primary)', marginBottom: 2 },
-  requestsSub: { fontSize: 12, color: 'var(--color-text-muted)' },
-  requestsBadge: { backgroundColor: 'var(--color-primary)', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 20, minWidth: 20, height: 20, padding: '0 5px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  groupInvitesSection: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', backgroundColor: 'rgba(139,92,246,0.06)', borderBottom: '1px solid var(--color-divider)', transition: 'background 0.15s' },
-  groupInvitesTitle: { fontSize: 14, fontWeight: 600, color: '#8b5cf6', marginBottom: 2 },
-  groupInvitesBadge: { backgroundColor: '#8b5cf6', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 20, minWidth: 20, height: 20, padding: '0 5px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  lightboxOverlay: { position: 'fixed', inset: 0, zIndex: 500, backgroundColor: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeSlideIn 0.15s ease' },
-  lightboxBox: { position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, backgroundColor: 'var(--color-surface)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 16px 48px rgba(0,0,0,0.5)', minWidth: 280 },
-  lightboxTopBar: { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--color-divider)', backgroundColor: 'var(--color-header-bg)', boxSizing: 'border-box' },
-  lightboxBackBtn: { background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: '4px 6px', borderRadius: 6 },
-  lightboxTitle: { fontSize: 14, fontWeight: 600, color: 'var(--color-text)' },
-  lightboxCloseBtn: { background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 15, cursor: 'pointer', padding: '4px 6px', borderRadius: 6, lineHeight: 1 },
-  lightboxName: { fontSize: 15, fontWeight: 600, color: 'var(--color-text)', margin: '4px 0 0' },
-  lightboxImg: { width: 200, height: 200, borderRadius: '50%', objectFit: 'cover', border: '3px solid var(--color-primary)', margin: '0 32px 28px' },
 }
 
 export default Sidebar

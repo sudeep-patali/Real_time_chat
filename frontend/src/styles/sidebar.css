@@ -52,9 +52,13 @@
   align-items: center;
   justify-content: center;
   color: var(--color-text-muted);
-  font-size: 20px;
   transition: background var(--transition-fast), color var(--transition-fast);
   cursor: pointer;
+  background: none;
+  border: none;
+  outline: none;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 .sidebar-header-icon:hover {
@@ -85,9 +89,10 @@
 
 .sidebar-search-icon {
   color: var(--color-text-dim);
-  font-size: 15px;
   flex-shrink: 0;
   line-height: 1;
+  display: flex;
+  align-items: center;
 }
 
 .sidebar-search input {
@@ -102,6 +107,24 @@
 
 .sidebar-search input::placeholder {
   color: var(--color-text-dim);
+}
+
+.sidebar-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color var(--transition-fast);
+}
+
+.sidebar-search-clear:hover {
+  color: var(--color-text);
 }
 
 /* ── Section label (ONLINE, etc.) ── */
@@ -195,7 +218,7 @@
   content: '';
   position: absolute;
   bottom: 0;
-  left: 72px;   /* aligns with text, not avatar */
+  left: 72px;
   right: 0;
   height: 1px;
   background: var(--color-divider);
@@ -271,11 +294,20 @@
   flex: 1;
 }
 
+.room-name--bold {
+  font-weight: 700;
+}
+
 .room-time {
   font-size: var(--font-size-xs);
   color: var(--color-text-dim);
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.room-time--unread {
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
 .room-item.active .room-time,
@@ -297,6 +329,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.room-last-msg--unread {
+  font-weight: 600;
+  color: var(--color-text);
 }
 
 .room-last-msg-icon {
@@ -346,7 +386,6 @@
   border-radius: 50%;
   width: 16px;
   height: 16px;
-  font-size: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -366,13 +405,21 @@
 }
 
 .sidebar-empty-icon {
-  font-size: 40px;
   opacity: 0.4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sidebar-empty p {
   font-size: var(--font-size-sm);
   text-align: center;
+}
+
+.sidebar-empty-hint {
+  font-size: 12px;
+  color: var(--color-text-dim);
+  margin-top: 4px;
 }
 
 /* ── Mobile ── */
@@ -404,4 +451,210 @@
 
 .sidebar-overlay.visible {
   display: block;
+}
+
+/* ══════════════════════════════════════════
+   NEW HELPER CLASSES (Session 3 additions)
+══════════════════════════════════════════ */
+
+/* Bell button — relative so badge can be absolute */
+.sidebar-bell-btn {
+  position: relative;
+}
+
+/* Bell badge */
+.sidebar-bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 1px 4px;
+  line-height: 14px;
+  min-width: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Three-dot menu wrapper */
+.sidebar-menu-wrap {
+  position: relative;
+}
+
+/* Dropdown positioned from menu wrapper */
+.sidebar-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: var(--z-dropdown);
+}
+
+/* Avatar lightbox overlay */
+.sidebar-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+
+/* Avatar lightbox card */
+.sidebar-lightbox-box {
+  background: var(--color-surface);
+  border-radius: 14px;
+  overflow: hidden;
+  min-width: 280px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Lightbox top bar */
+.sidebar-lightbox-topbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-header-bg);
+  box-sizing: border-box;
+}
+
+/* Lightbox title */
+.sidebar-lightbox-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Lightbox username below topbar */
+.sidebar-lightbox-username {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-top: 16px;
+}
+
+/* Lightbox avatar image */
+.sidebar-lightbox-img {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--color-primary);
+  margin: 12px 32px 28px;
+}
+
+/* Message requests / group invitations rows */
+.sidebar-requests-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-divider);
+  transition: background 0.15s ease;
+}
+
+.sidebar-requests-row:hover {
+  background: var(--color-surface-2);
+}
+
+.sidebar-requests-row.requests {
+  background: rgba(0, 168, 132, 0.05);
+}
+
+.sidebar-requests-row.invites {
+  background: rgba(139, 92, 246, 0.05);
+}
+
+.sidebar-requests-row-icon {
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.sidebar-requests-row.requests .sidebar-requests-row-icon {
+  color: var(--color-primary);
+}
+
+.sidebar-requests-row.invites .sidebar-requests-row-icon {
+  color: #8b5cf6;
+}
+
+.sidebar-requests-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-requests-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+  margin: 0 0 2px;
+}
+
+.sidebar-requests-title.requests {
+  color: var(--color-primary);
+}
+
+.sidebar-requests-title.invites {
+  color: #8b5cf6;
+}
+
+.sidebar-requests-sub {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* Primary badge (green) */
+.sidebar-badge-primary {
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 20px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Purple badge (group invites) */
+.sidebar-badge-purple {
+  background: #8b5cf6;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 20px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Inline media-type icon in message preview */
+.room-preview-icon {
+  color: var(--color-text-dim);
+  margin-right: 3px;
+  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }

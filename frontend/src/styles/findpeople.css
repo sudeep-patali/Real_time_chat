@@ -1,0 +1,430 @@
+/* ═══════════════════════════════════════
+   FIND PEOPLE PAGE
+═══════════════════════════════════════ */
+
+/* ── Shell / layout ── */
+.fp-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg);
+  overflow: hidden;
+}
+
+.fp-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.fp-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--color-bg);
+}
+
+/* ── Top bar ── */
+.fp-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  height: 59px;
+  min-height: 59px;
+  background-color: var(--color-header-bg);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.fp-back-btn {
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.fp-topbar-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+  flex: 1;
+}
+
+.fp-searching-pill {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  background-color: var(--color-surface-2);
+  padding: 3px 10px;
+  border-radius: 20px;
+  flex-shrink: 0;
+}
+
+/* ── Search bar ── */
+.fp-search-wrap {
+  padding: 10px 16px;
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.fp-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--color-search-bg);
+  border-radius: 10px;
+  padding: 9px 12px;
+  transition: background 0.15s ease;
+}
+
+.fp-search-box:focus-within {
+  background-color: var(--color-surface-2);
+}
+
+.fp-search-icon {
+  color: var(--color-text-dim);
+  flex-shrink: 0;
+}
+
+.fp-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-text);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.fp-search-input::placeholder {
+  color: var(--color-text-dim);
+}
+
+.fp-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  transition: color 0.12s ease;
+  line-height: 1;
+}
+
+.fp-search-clear:hover {
+  color: var(--color-text);
+}
+
+/* ── User list scroll area ── */
+.fp-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ── Section label ── */
+.fp-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px 4px;
+}
+
+.fp-section-label-text {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.fp-section-label-count {
+  font-size: 11px;
+  color: var(--color-text-dim);
+}
+
+/* ── User row ── */
+.fp-user-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-divider);
+  background-color: transparent;
+  transition: background 0.12s ease;
+}
+
+.fp-user-row:hover {
+  background-color: var(--color-surface-2);
+}
+
+.fp-row-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.fp-row-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.fp-row-online-dot {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background-color: var(--color-online);
+  border: 2px solid var(--color-surface);
+}
+
+.fp-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.fp-row-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0 0 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-row-email {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 0 0 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-row-bio {
+  font-size: 12px;
+  color: var(--color-text-dim);
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fp-row-status-tag {
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.fp-row-status-tag.online {
+  color: var(--color-online);
+}
+
+.fp-row-status-tag.offline {
+  color: var(--color-text-dim);
+}
+
+/* ── Search highlight ── */
+.fp-highlight {
+  background-color: rgba(0, 168, 132, 0.3);
+  color: var(--color-primary);
+  border-radius: 2px;
+}
+
+/* ── Empty / loading states ── */
+.fp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  margin-top: 40px;
+  gap: 8px;
+  text-align: center;
+}
+
+.fp-empty-icon {
+  color: var(--color-text-dim);
+  opacity: 0.35;
+  margin-bottom: 4px;
+}
+
+.fp-empty-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.fp-empty-hint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* ── Skeleton rows ── */
+.fp-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.fp-skeleton-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fp-skeleton-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fp-skeleton-name {
+  height: 14px;
+  width: 55%;
+  border-radius: 4px;
+}
+
+.fp-skeleton-email {
+  height: 11px;
+  width: 38%;
+  border-radius: 4px;
+}
+
+/* ── Profile Preview Modal ── */
+.fp-preview-modal {
+  width: 100%;
+  max-width: 360px;
+}
+
+.fp-preview-body {
+  padding: 0 0 4px;
+}
+
+.fp-preview-avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 24px 16px;
+  text-align: center;
+}
+
+.fp-preview-avatar-wrap {
+  position: relative;
+  margin-bottom: 4px;
+}
+
+.fp-preview-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--color-primary);
+  display: block;
+}
+
+.fp-preview-online-dot {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--color-online);
+  border: 2px solid var(--color-surface);
+}
+
+.fp-preview-email {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.fp-preview-bio {
+  font-size: 13px;
+  color: var(--color-text-dim);
+  font-style: italic;
+  margin: 2px 0;
+  max-width: 260px;
+  line-height: 1.5;
+}
+
+.fp-preview-status-row {
+  margin: 6px 0 4px;
+}
+
+.fp-preview-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.fp-preview-status-pill.online {
+  background-color: rgba(37, 211, 102, 0.15);
+  color: var(--color-online);
+}
+
+.fp-preview-status-pill.offline {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-dim);
+}
+
+body.light .fp-preview-status-pill.offline {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+.fp-preview-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: currentColor;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.fp-preview-actions {
+  display: flex;
+  gap: 10px;
+  padding: 0 20px 20px;
+}
+
+/* ── Start chat button loading state ── */
+.fp-btn-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fp-btn-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

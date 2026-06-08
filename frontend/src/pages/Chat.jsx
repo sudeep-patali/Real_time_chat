@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { Search, MoreVertical, Ban } from 'lucide-react'
 import { useChat } from '../hooks/useChat'
 import { useAuth } from '../hooks/useAuth'
 import { useChatStore } from '../store/chatStore'
@@ -50,29 +51,15 @@ function Chat() {
   const room         = pendingRoom || acceptedRoom || fetchedRoom
 
   // ── FIX BUG 1: isPending must distinguish sender vs receiver.
-  //
-  //    The RECEIVER's pending rooms live in `pendingRooms` (populated
-  //    by useRooms → getRequests, which filters requestedBy !== me).
-  //    The SENDER's newly-created room lives in `rooms` with status:'pending'
-  //    (added optimistically by FindPeople.handleStartChat).
-  //
-  //    Old logic: isPending = !!pendingRoom || room?.status === 'pending'
-  //    Bug: the second condition fires for the SENDER too.
-  //
-  //    Fix: also check requestedBy. If current user IS requestedBy, they are
-  //    the sender — show a normal (non-pending) chat view for them.
   const currentUserId    = currentUser?.id?.toString() || currentUser?._id?.toString() || ''
   const requestedById    = (room?.requestedBy?._id || room?.requestedBy?.id || room?.requestedBy)?.toString() || ''
   const iAmRequester     = !!requestedById && requestedById === currentUserId
-  // A room is "pending for me" only if I'm in the pendingRooms list (= I am the receiver)
-  // OR the room status is pending AND I'm NOT the one who sent the request.
   const isPending        = !!pendingRoom || (room?.status === 'pending' && !iAmRequester)
 
   // ── Track which roomId we last fetched to avoid re-fetch loops ─
   const lastFetchedRoomId = useRef(null)
 
   useEffect(() => {
-    // Reset fetch tracker when navigating to a different room
     if (lastFetchedRoomId.current !== roomId) {
       lastFetchedRoomId.current = null
       setFetchedRoom(null)
@@ -80,7 +67,6 @@ function Chat() {
   }, [roomId])
 
   useEffect(() => {
-    // If we already have a fully-populated room in the store, nothing to do.
     const storeRoom = pendingRooms.find(r => r.id === roomId || r._id === roomId)
                    || rooms.find(r => r.id === roomId || r._id === roomId)
 
@@ -90,7 +76,6 @@ function Chat() {
       return
     }
 
-    // Avoid re-fetching the same roomId
     if (lastFetchedRoomId.current === roomId) return
     lastFetchedRoomId.current = roomId
 
@@ -124,8 +109,7 @@ function Chat() {
             }
           : null
 
-        // FIX BUG 2: preserve requestedBy as a plain string so the
-        // isPending / iAmRequester check works after a page refresh.
+        // FIX BUG 2: preserve requestedBy as a plain string
         const requestedByStr = (r.requestedBy?._id || r.requestedBy?.id || r.requestedBy)?.toString() || null
 
         const formatted = {
@@ -134,7 +118,6 @@ function Chat() {
           _id:            (r._id || r.id)?.toString(),
           participantIds: normalizedParticipants,
           otherUser,
-          // Keep requestedBy as a plain string for the isPending guard
           requestedBy:    requestedByStr,
           lastMessage: r.lastMessage
             ? {
@@ -145,7 +128,6 @@ function Chat() {
             : null,
         }
 
-        // Push into the store so subsequent renders hit the fast path
         useChatStore.getState().addRoom(formatted)
         setFetchedRoom(formatted)
       })
@@ -153,7 +135,6 @@ function Chat() {
       .finally(() => { if (!cancelled) setRoomLoading(false) })
 
     return () => { cancelled = true }
-  // Only re-run when roomId or currentUser changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, currentUser?.id])
 
@@ -257,15 +238,12 @@ function Chat() {
     return other?.name || other?.email || (roomLoading ? '' : 'Chat')
   }
 
-  const displayName = getDisplayName()
-  // While loading, show neutral initials instead of "?" for "Chat"
-  const initials    = displayName ? displayName.slice(0, 2).toUpperCase() : '…'
-  // Resolve avatar for the chat header
+  const displayName  = getDisplayName()
+  const initials     = displayName ? displayName.slice(0, 2).toUpperCase() : '…'
   const headerAvatar = room?.isGroup
     ? (room.groupAvatar || room.avatarUrl || null)
     : (room?.otherUser?.avatar || null)
-  // Only show senderName banner for the RECEIVER (isPending is already false for sender)
-  const senderName  = isPending ? (room?.otherUser?.name || 'Someone') : null
+  const senderName   = isPending ? (room?.otherUser?.name || 'Someone') : null
 
   const handleHeaderClick = () => {
     if (room?.isGroup) return
@@ -278,24 +256,37 @@ function Chat() {
   const activeMatchMsgIndex = matchCount > 0 ? matches[matchIndex] : -1
 
   return (
-    <div style={styles.shell}>
+    <div className='chat-shell'>
       <Navbar />
-      <div style={styles.body}>
+      <div className='chat-body'>
         <Sidebar />
-        <div style={styles.main}>
+        <div className='chat-main'>
 
           {/* ── Header ── */}
           <div className='chat-header' onClick={handleHeaderClick}>
             <div className='chat-header-avatar-wrap'>
-              <div className='chat-header-avatar' style={{
-                background: '#5b8def', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 15,
-                overflow: 'hidden', padding: 0,
-              }}>
+              <div
+                className='chat-header-avatar'
+                style={{
+                  background: '#5b8def',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: 15,
+                  overflow: 'hidden',
+                  padding: 0,
+                }}
+              >
                 {roomLoading && !displayName ? (
                   <span style={{ opacity: 0.4, fontSize: 18 }}>…</span>
                 ) : headerAvatar ? (
-                  <img src={headerAvatar} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
+                  <img
+                    src={headerAvatar}
+                    alt={displayName}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }}
+                  />
                 ) : initials}
               </div>
               {isOnline && <span className='chat-header-online-dot' />}
@@ -303,10 +294,9 @@ function Chat() {
 
             <div className='chat-header-info'>
               {roomLoading && !displayName ? (
-                // Skeleton placeholders — no "Chat" / "?" flicker
                 <>
-                  <span style={styles.skeletonName} />
-                  <span style={styles.skeletonStatus} />
+                  <span className='chat-skeleton-name' />
+                  <span className='chat-skeleton-status' />
                 </>
               ) : (
                 <>
@@ -324,10 +314,15 @@ function Chat() {
                 title='Search in chat (Ctrl+F)'
                 onClick={e => { e.stopPropagation(); openSearch() }}
               >
-                🔍
+                <Search size={18} />
               </button>
-              <button className='chat-header-icon' title='More'
-                onClick={e => e.stopPropagation()}>⋮</button>
+              <button
+                className='chat-header-icon'
+                title='More'
+                onClick={e => e.stopPropagation()}
+              >
+                <MoreVertical size={18} />
+              </button>
             </div>
           </div>
 
@@ -396,25 +391,31 @@ function Chat() {
 
           {/* ── Input / blocked / pending banners ── */}
           {isPending ? (
-            <div style={styles.blockedInput}>
+            <div className='chat-blocked-input'>
               <p>Accept the request to send messages.</p>
             </div>
           ) : blockedByThem ? (
-            <div style={styles.blockedBanner}>
-              <span style={styles.blockedIcon}>🚫</span>
+            <div className='chat-blocked-banner'>
+              <span className='chat-blocked-icon'>
+                <Ban size={20} />
+              </span>
               <div>
-                <p style={styles.blockedTitle}>You can't send messages to {displayName}</p>
-                <p style={styles.blockedSub}>This user has restricted who can message them.</p>
+                <p className='chat-blocked-title'>You can&apos;t send messages to {displayName}</p>
+                <p className='chat-blocked-sub'>This user has restricted who can message them.</p>
               </div>
             </div>
           ) : blockStatus.iBlockedThem ? (
-            <div style={styles.blockedBanner}>
-              <span style={styles.blockedIcon}>🚫</span>
+            <div className='chat-blocked-banner'>
+              <span className='chat-blocked-icon'>
+                <Ban size={20} />
+              </span>
               <div>
-                <p style={styles.blockedTitle}>You have blocked {displayName}</p>
-                <p style={styles.blockedSub}>
+                <p className='chat-blocked-title'>You have blocked {displayName}</p>
+                <p className='chat-blocked-sub'>
                   Unblock from{' '}
-                  <span style={styles.unblockLink} onClick={handleHeaderClick}>Contact Info</span>
+                  <span className='chat-unblock-link' onClick={handleHeaderClick}>
+                    Contact Info
+                  </span>
                   {' '}to send messages.
                 </p>
               </div>
@@ -427,35 +428,6 @@ function Chat() {
       </div>
     </div>
   )
-}
-
-const styles = {
-  shell:        { height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--color-bg)', overflow: 'hidden' },
-  body:         { flex: 1, display: 'flex', overflow: 'hidden' },
-  main:         { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' },
-  blockedInput: { padding: '14px 16px', backgroundColor: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', textAlign: 'center', fontSize: 13, color: 'var(--color-text-muted)', flexShrink: 0 },
-  blockedBanner:{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', backgroundColor: 'var(--color-surface)', borderTop: '1px solid var(--color-border)', flexShrink: 0 },
-  blockedIcon:  { fontSize: 22, flexShrink: 0 },
-  blockedTitle: { fontSize: 13, fontWeight: 600, color: 'var(--color-text)', margin: 0 },
-  blockedSub:   { fontSize: 12, color: 'var(--color-text-muted)', margin: '2px 0 0', lineHeight: 1.4 },
-  unblockLink:  { color: 'var(--color-primary)', cursor: 'pointer', textDecoration: 'underline', fontWeight: 500 },
-  // Loading skeleton styles — prevent "Chat" flash while room data loads
-  skeletonName: {
-    display: 'block', height: 14, width: 100,
-    borderRadius: 6,
-    background: 'linear-gradient(90deg, var(--color-surface-2, #2a3942) 25%, var(--color-border, #3a4a57) 50%, var(--color-surface-2, #2a3942) 75%)',
-    backgroundSize: '200% 100%',
-    animation: 'shimmer 1.4s infinite',
-    marginBottom: 5,
-  },
-  skeletonStatus: {
-    display: 'block', height: 10, width: 60,
-    borderRadius: 4,
-    background: 'linear-gradient(90deg, var(--color-surface-2, #2a3942) 25%, var(--color-border, #3a4a57) 50%, var(--color-surface-2, #2a3942) 75%)',
-    backgroundSize: '200% 100%',
-    animation: 'shimmer 1.4s infinite',
-    opacity: 0.6,
-  },
 }
 
 export default Chat

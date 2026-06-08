@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Menu, Bell, Users, Settings, LogOut } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useNotification } from '../hooks/useNotification'
 import { useUiStore } from '../store/uiStore'
-import { generateAvatar } from '../utils/generateAvatar'
-import { useNavigate } from 'react-router-dom'
-import NotificationPanel from './NotificationPanel'
 import { useGroupInviteStore } from '../store/groupInviteStore'
+import { generateAvatar } from '../utils/generateAvatar'
+import NotificationPanel from './NotificationPanel'
 import '../styles/navbar.css'
 
 function Navbar() {
@@ -14,7 +15,7 @@ function Navbar() {
   const toggleSidebar = useUiStore(state => state.toggleSidebar)
   const navigate = useNavigate()
 
-  const invitations = useGroupInviteStore(state => state.invitations)
+  const invitations    = useGroupInviteStore(state => state.invitations)
   const pendingInvites = invitations.length
   const [showNotifications, setShowNotifications] = useState(false)
 
@@ -26,36 +27,35 @@ function Navbar() {
     <>
       <nav className='navbar'>
         <div className='navbar-left'>
-          <button className='hamburger' onClick={toggleSidebar} aria-label='Open menu'>
-            ☰
+          <button className='hamburger navbar-icon-btn' onClick={toggleSidebar} aria-label='Open menu'>
+            <Menu size={22} />
           </button>
           <span className='navbar-logo'>WHEELTRIX</span>
         </div>
 
         <div className='navbar-right'>
+
           {/* Bell — opens NotificationPanel */}
           <button
-            className='navbar-icon-btn'
+            className='navbar-icon-btn navbar-bell-btn'
             title='Notifications'
             onClick={() => setShowNotifications(true)}
-            style={{ position: 'relative' }}
           >
-            🔔
+            <Bell size={22} />
             {totalUnread > 0 && (
-              <span className='badge'>{totalUnread > 9 ? '9+' : totalUnread}</span>
+              <span className='navbar-badge'>{totalUnread > 9 ? '9+' : totalUnread}</span>
             )}
           </button>
 
           {/* Group invitations */}
           <button
-            className='navbar-icon-btn'
+            className='navbar-icon-btn navbar-badge-btn'
             title='Group Invitations'
             onClick={() => navigate('/group-invitations')}
-            style={{ position: 'relative' }}
           >
-            👥
+            <Users size={22} />
             {pendingInvites > 0 && (
-              <span className='badge'>{pendingInvites > 9 ? '9+' : pendingInvites}</span>
+              <span className='navbar-badge'>{pendingInvites > 9 ? '9+' : pendingInvites}</span>
             )}
           </button>
 
@@ -65,7 +65,7 @@ function Navbar() {
             title='Settings'
             onClick={() => navigate('/settings')}
           >
-            ⚙️
+            <Settings size={22} />
           </button>
 
           {/* Avatar */}
@@ -83,9 +83,14 @@ function Navbar() {
           </div>
 
           {/* Logout */}
-          <button className='navbar-logout' onClick={logout}>
-            Logout
+          <button
+            className='navbar-icon-btn navbar-logout-btn'
+            title='Logout'
+            onClick={logout}
+          >
+            <LogOut size={20} />
           </button>
+
         </div>
       </nav>
 
