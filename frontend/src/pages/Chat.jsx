@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Search, MoreVertical, Ban } from 'lucide-react'
+import { Search, MoreVertical, Ban, ChevronUp, ChevronDown, X } from 'lucide-react'
 import { useChat } from '../hooks/useChat'
 import { useAuth } from '../hooks/useAuth'
 import { useChatStore } from '../store/chatStore'
@@ -201,33 +201,27 @@ function Chat() {
 
   useEffect(() => { setMatchIndex(0) }, [searchQuery, roomId])
 
-  const openSearch = useCallback(() => {
+  const openSearch = () => {
     setSearchOpen(true)
-    setTimeout(() => searchInputRef.current?.focus(), 50)
-  }, [])
+    setTimeout(() => searchInputRef.current?.focus(), 0)
+  }
 
-  const closeSearch = useCallback(() => {
+  const closeSearch = () => {
     setSearchOpen(false)
     setSearchQuery('')
     setMatchIndex(0)
-  }, [])
+  }
 
-  useEffect(() => {
-    const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault()
-        searchOpen ? closeSearch() : openSearch()
-      }
-      if (e.key === 'Escape' && searchOpen) closeSearch()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [searchOpen, openSearch, closeSearch])
+  const goNext = () => {
+    if (matchCount < 1) return
+    setMatchIndex(i => (i + 1) % matchCount)
+  }
 
-  const goNext = () => { if (matchCount) setMatchIndex(i => (i + 1) % matchCount) }
-  const goPrev = () => { if (matchCount) setMatchIndex(i => (i - 1 + matchCount) % matchCount) }
+  const goPrev = () => {
+    if (matchCount < 1) return
+    setMatchIndex(i => (i - 1 + matchCount) % matchCount)
+  }
 
-  // ── Display helpers ───────────────────────────────────────────
   const getDisplayName = () => {
     if (room?.isGroup) return room.groupName || 'Group'
     if (room?.otherUser?.name) return room.otherUser.name
@@ -265,29 +259,18 @@ function Chat() {
           {/* ── Header ── */}
           <div className='chat-header' onClick={handleHeaderClick}>
             <div className='chat-header-avatar-wrap'>
-              <div
-                className='chat-header-avatar'
-                style={{
-                  background: '#5b8def',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#fff',
-                  fontWeight: 700,
-                  fontSize: 15,
-                  overflow: 'hidden',
-                  padding: 0,
-                }}
-              >
+              <div className='chat-header-avatar'>
                 {roomLoading && !displayName ? (
-                  <span style={{ opacity: 0.4, fontSize: 18 }}>…</span>
+                  <span className='chat-header-avatar-loading'>…</span>
                 ) : headerAvatar ? (
                   <img
                     src={headerAvatar}
                     alt={displayName}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }}
+                    className='chat-header-avatar-img'
                   />
-                ) : initials}
+                ) : (
+                  <span className='chat-header-avatar-initials'>{initials}</span>
+                )}
               </div>
               {isOnline && <span className='chat-header-online-dot' />}
             </div>
@@ -330,11 +313,7 @@ function Chat() {
           {searchOpen && (
             <div className='chat-search-bar'>
               <div className='chat-search-pill'>
-                <svg width='15' height='15' viewBox='0 0 24 24' fill='none'
-                  stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'
-                  style={{ color: 'var(--color-text-dim)', flexShrink: 0 }}>
-                  <circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/>
-                </svg>
+                <Search size={15} style={{ color: 'var(--color-text-dim)' }} />
                 <input
                   ref={searchInputRef}
                   id='chat-search-input'
@@ -357,13 +336,13 @@ function Chat() {
                 )}
               </div>
               <button className='chat-search-nav-btn' onClick={goPrev} disabled={matchCount < 2} title='Previous (Shift+Enter)'>
-                <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'><polyline points='18 15 12 9 6 15'/></svg>
+                <ChevronUp size={14} />
               </button>
               <button className='chat-search-nav-btn' onClick={goNext} disabled={matchCount < 2} title='Next (Enter)'>
-                <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'><polyline points='6 9 12 15 18 9'/></svg>
+                <ChevronDown size={14} />
               </button>
               <button className='chat-search-close-btn' onClick={closeSearch} title='Close (Esc)'>
-                <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2.5' strokeLinecap='round' strokeLinejoin='round'><line x1='18' y1='6' x2='6' y2='18'/><line x1='6' y1='6' x2='18' y2='18'/></svg>
+                <X size={14} />
               </button>
             </div>
           )}

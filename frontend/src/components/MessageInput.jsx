@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { Paperclip, Smile, Mic, Send } from 'lucide-react'
 import { useSocket } from '../hooks/useSocket'
 import { TYPING_START, TYPING_STOP, GROUP_TYPING_START, GROUP_TYPING_STOP } from '../socket/socketEvents'
 import FileUpload from './FileUpload'
@@ -7,14 +8,14 @@ import VoiceMessageRecorder from './VoiceMessageRecorder'
 import '../styles/chat.css'
 
 function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
-  const [text,        setText]        = useState('')
-  const [showUpload,  setShowUpload]  = useState(false)
-  const [showEmoji,   setShowEmoji]   = useState(false)
-  const { emit }                      = useSocket()
-  const typingTimer                   = useRef(null)
-  const isTypingRef                   = useRef(false)
-  const inputRef                      = useRef(null)
-  const emojiRef                      = useRef(null)
+  const [text,       setText]       = useState('')
+  const [showUpload, setShowUpload] = useState(false)
+  const [showEmoji,  setShowEmoji]  = useState(false)
+  const { emit }                    = useSocket()
+  const typingTimer                 = useRef(null)
+  const isTypingRef                 = useRef(false)
+  const inputRef                    = useRef(null)
+  const emojiRef                    = useRef(null)
 
   // Close emoji picker when clicking outside
   useEffect(() => {
@@ -95,11 +96,10 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
       setText(prev => prev + emoji)
       return
     }
-    const start = input.selectionStart
-    const end   = input.selectionEnd
+    const start   = input.selectionStart
+    const end     = input.selectionEnd
     const newText = text.slice(0, start) + emoji + text.slice(end)
     setText(newText)
-    // Restore cursor position after emoji insert
     requestAnimationFrame(() => {
       input.selectionStart = start + emoji.length
       input.selectionEnd   = start + emoji.length
@@ -121,7 +121,7 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
 
       {/* Emoji picker floats above input bar */}
       {showEmoji && !disabled && (
-        <div ref={emojiRef} style={styles.emojiPickerWrap}>
+        <div ref={emojiRef} className='emoji-picker-wrap'>
           <EmojiPicker onSelect={handleEmojiSelect} onClose={() => setShowEmoji(false)} />
         </div>
       )}
@@ -136,19 +136,18 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
           onClick={() => !disabled && setShowUpload(prev => !prev)}
           disabled={disabled}
         >
-          📎
+          <Paperclip size={20} />
         </button>
 
         <div className='input-pill'>
           <button
-            className='emoji-btn'
+            className={`emoji-btn${showEmoji ? ' active' : ''}`}
             title='Emoji'
             tabIndex={-1}
             disabled={disabled}
             onClick={() => !disabled && setShowEmoji(prev => !prev)}
-            style={showEmoji ? { color: 'var(--color-primary)' } : {}}
           >
-            😊
+            <Smile size={20} />
           </button>
           <input
             ref={inputRef}
@@ -172,21 +171,12 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false }) {
             title={disabled ? 'Messaging disabled' : 'Send'}
             disabled={disabled}
           >
-            ➤
+            <Send size={20} />
           </button>
         )}
       </div>
     </>
   )
-}
-
-const styles = {
-  emojiPickerWrap: {
-    position: 'absolute',
-    bottom: '70px',
-    left: '16px',
-    zIndex: 300,
-  }
 }
 
 export default MessageInput
