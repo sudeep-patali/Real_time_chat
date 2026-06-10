@@ -307,74 +307,80 @@
 
 /* ── Profile Preview Modal ── */
 .fp-preview-modal {
-  width: 100%;
-  max-width: 360px;
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+}
+
+/* Override base .modal-body padding for this compact modal */
+.fp-preview-modal .modal-body {
+  padding: 0;
 }
 
 .fp-preview-body {
-  padding: 0 0 4px;
+  padding: 0 0 2px;
 }
 
 .fp-preview-avatar-section {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 24px 24px 16px;
+  gap: 4px;
+  padding: 16px 20px 12px;
   text-align: center;
 }
 
 .fp-preview-avatar-wrap {
   position: relative;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .fp-preview-avatar {
-  width: 88px;
-  height: 88px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   object-fit: cover;
-  border: 3px solid var(--color-primary);
+  border: 2px solid var(--color-primary);
   display: block;
 }
 
 .fp-preview-online-dot {
   position: absolute;
-  bottom: 4px;
-  right: 4px;
-  width: 16px;
-  height: 16px;
+  bottom: 3px;
+  right: 3px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background-color: var(--color-online);
   border: 2px solid var(--color-surface);
 }
 
 .fp-preview-email {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--color-text-muted);
   margin: 0;
 }
 
 .fp-preview-bio {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--color-text-dim);
   font-style: italic;
-  margin: 2px 0;
-  max-width: 260px;
-  line-height: 1.5;
+  margin: 1px 0;
+  max-width: 220px;
+  line-height: 1.4;
 }
 
 .fp-preview-status-row {
-  margin: 6px 0 4px;
+  margin: 4px 0 2px;
 }
 
 .fp-preview-status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
+  gap: 5px;
+  padding: 3px 10px;
   border-radius: 20px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -393,8 +399,8 @@ body.light .fp-preview-status-pill.offline {
 }
 
 .fp-preview-status-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background-color: currentColor;
   display: inline-block;
@@ -403,8 +409,8 @@ body.light .fp-preview-status-pill.offline {
 
 .fp-preview-actions {
   display: flex;
-  gap: 10px;
-  padding: 0 20px 20px;
+  gap: 8px;
+  padding: 0 16px 16px;
 }
 
 /* ── Start chat button loading state ── */
