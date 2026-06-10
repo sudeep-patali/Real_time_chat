@@ -1140,6 +1140,30 @@ body.light .bubble-file-link {
   white-space: nowrap;
 }
 
+.bubble-file-download-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.bubble-file-download-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--color-primary);
+}
+
+body.light .bubble-file-download-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--color-primary);
+}
+
 .bubble-file-download {
   font-size: 14px;
   flex-shrink: 0;
@@ -1258,18 +1282,7 @@ body.light .bubble-file-link {
   background: rgba(0, 0, 0, 0.12);
 }
 
-/* ── Bubble: dropdown positioning ── */
-.bubble-dropdown {
-  top: 24px;
-}
 
-.bubble-dropdown.own {
-  right: 0;
-}
-
-.bubble-dropdown.other {
-  right: 0;
-}
 
 /* ── Bubble: delete modal ── */
 .bubble-delete-modal {

@@ -17,6 +17,7 @@ import {
   FileSpreadsheet,
   FileCode,
   File,
+  BookmarkPlus,
 } from 'lucide-react'
 import AudioPlayer from './AudioPlayer'
 import { generateAvatar } from '../utils/generateAvatar'
@@ -215,9 +216,11 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
     messageService.getStarredIds().includes(message.id)
   )
 
-  const menuRef   = useRef(null)
-  const editRef   = useRef(null)
-  const hideTimer = useRef(null)
+  const menuRef    = useRef(null)
+  const triggerRef = useRef(null)
+  const editRef    = useRef(null)
+  const hideTimer  = useRef(null)
+  const [menuPos,  setMenuPos]  = useState({ top: 0, left: 0, openUp: false })
   const avatarSrc = message.senderAvatar || generateAvatar(message.senderName || 'User')
 
   useEffect(() => () => clearTimeout(hideTimer.current), [])
@@ -280,6 +283,37 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
     setIsStarred(nowStarred)
     setMenuOpen(false)
   }, [message.id])
+
+  const handleSave = useCallback(async () => {
+    setMenuOpen(false)
+    try {
+      if (message.type === 'text') {
+        // Save text as a .txt file
+        const blob = new Blob([message.content], { type: 'text/plain' })
+        const url  = URL.createObjectURL(blob)
+        const a    = document.createElement('a')
+        a.href     = url
+        a.download = `message-${message.id || Date.now()}.txt`
+        a.click()
+        URL.revokeObjectURL(url)
+      } else if (message.fileUrl) {
+        // Fetch the file as a blob to force download (works cross-origin too)
+        const fileName = message.fileName || message.content || `file-${Date.now()}`
+        const res  = await fetch(message.fileUrl)
+        const blob = await res.blob()
+        const url  = URL.createObjectURL(blob)
+        const a    = document.createElement('a')
+        a.href     = url
+        a.download = fileName
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } catch (err) {
+      console.error('Save failed:', err)
+      // Fallback: open in new tab
+      if (message.fileUrl) window.open(message.fileUrl, '_blank')
+    }
+  }, [message])
 
   const handleReportSubmit = useCallback(async () => {
     setReportLoading(true)
@@ -380,15 +414,35 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
     if (message.type === 'file' || message.type === 'document' || isDocumentSourced) {
       const name = message.fileName || message.content || 'Download file'
       const ext  = name.split('.').pop()?.toLowerCase()
+      const downloadFile = async (e) => {
+        e.preventDefault()
+        try {
+          const res  = await fetch(message.fileUrl)
+          const blob = await res.blob()
+          const url  = URL.createObjectURL(blob)
+          const a    = document.createElement('a')
+          a.href     = url
+          a.download = name
+          a.click()
+          URL.revokeObjectURL(url)
+        } catch {
+          window.open(message.fileUrl, '_blank')
+        }
+      }
       return (
-        <a href={message.fileUrl} download={name} target='_blank' rel='noreferrer'
-          className={`bubble-file-link${isOwn ? ' own' : ''}`}>
+        <div className={`bubble-file-link${isOwn ? ' own' : ''}`}>
           <span style={{ flexShrink: 0, color: 'var(--color-primary)' }}>
             {getFileIcon(ext)}
           </span>
           <span className='bubble-file-name'>{name}</span>
-          <Download size={16} style={{ flexShrink: 0, color: 'var(--color-text-muted)' }} />
-        </a>
+          <button
+            className='bubble-file-download-btn'
+            onClick={downloadFile}
+            title='Download'
+          >
+            <Download size={16} />
+          </button>
+        </div>
       )
     }
 
@@ -500,15 +554,32 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
               className={`bubble-menu-anchor ${isOwn ? 'own' : 'other'}`}
             >
               <button
+                ref={triggerRef}
                 className='bubble-menu-trigger'
-                onClick={() => setMenuOpen(p => !p)}
+                onClick={() => {
+                  if (!menuOpen && triggerRef.current) {
+                    const rect = triggerRef.current.getBoundingClientRect()
+                    const menuHeight = 280
+                    const menuWidth  = 200
+                    const spaceBelow = window.innerHeight - rect.bottom
+                    const openUp     = spaceBelow < menuHeight
+                    // Align right edge of menu with right edge of trigger
+                    const left = Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)
+                    const top  = openUp ? rect.top - menuHeight : rect.bottom + 4
+                    setMenuPos({ top, left: Math.max(left, 8), openUp })
+                  }
+                  setMenuOpen(p => !p)
+                }}
                 title='More options'
               >
                 <MoreVertical size={14} />
               </button>
 
               {menuOpen && (
-                <div className={`dropdown-menu bubble-dropdown ${isOwn ? 'own' : 'other'}`}>
+                <div
+                  className={`dropdown-menu bubble-dropdown ${isOwn ? 'own' : 'other'}`}
+                  style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
+                >
                   {canEdit && (
                     <button
                       className='dropdown-item'
@@ -541,6 +612,15 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
                     <Star size={14} style={{ fill: isStarred ? 'var(--color-star, #f5c518)' : 'none', color: isStarred ? 'var(--color-star, #f5c518)' : 'currentColor' }} />
                     {isStarred ? 'Unstar' : 'Star'}
                   </button>
+                  {(message.fileUrl || message.type === 'text') && (
+                    <button
+                      className='dropdown-item'
+                      onClick={handleSave}
+                    >
+                      <BookmarkPlus size={14} />
+                      Save
+                    </button>
+                  )}
                   {isOwn && (
                     <button
                       className='dropdown-item'
