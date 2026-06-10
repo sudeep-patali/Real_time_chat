@@ -18,6 +18,14 @@
   border-radius: 20px;
   padding: 40px 36px 36px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+  /*
+    FIX: explicit overflow: visible ensures the custom email dropdown
+    (.auth-dropdown) can spill outside the card boundaries on small
+    screens without being clipped. Many browsers default to visible
+    but some mobile WebViews compute a stacking context that clips
+    absolutely-positioned children.
+  */
+  overflow: visible;
 }
 
 /* ── Logo ── */
@@ -64,10 +72,21 @@
   gap: 16px;
 }
 
+/* 
+  FIX: gap between consecutive .auth-field elements inside a <form>.
+  Previously the non-form fields used .auth-form (a flex container) for
+  spacing; now everything is inside one <form>. The margin-bottom below
+  replicates that 16px gap.
+*/
 .auth-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-bottom: 16px;
+}
+
+.auth-field:last-of-type {
+  margin-bottom: 0;
 }
 
 .auth-label {
@@ -155,7 +174,12 @@
 /* ── Custom email dropdown ──
    Anchored to .auth-field-wrap (position:relative).
    top: calc(100% + 4px) puts it 4px below the input.
-   z-index: 200 keeps it above everything in the card.
+
+   FIX: z-index raised to 9999 to guarantee it renders above every
+   possible stacking context on mobile WebViews (some browsers create
+   implicit stacking contexts on elements with -webkit-overflow-scrolling
+   or transform, which can bury a z-index:200 child).
+
    No overflow:hidden anywhere in the chain — it can spill freely.
 */
 .auth-dropdown {
@@ -163,7 +187,7 @@
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  z-index: 200;
+  z-index: 9999;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -185,6 +209,8 @@
   cursor: pointer;
   transition: background 0.12s ease;
   -webkit-tap-highlight-color: transparent;
+  /* FIX: prevents a 300ms tap delay on mobile triggering the item twice */
+  touch-action: manipulation;
 }
 
 .auth-dropdown-item:hover,

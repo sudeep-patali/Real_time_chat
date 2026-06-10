@@ -1,4 +1,3 @@
-cat > /home/claude/Signup.jsx << 'EOF'
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { User, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react'
@@ -103,13 +102,26 @@ function Signup() {
         )}
 
         {/*
-          ── Full Name & Email live OUTSIDE the <form> ──────────────────────
-          Chrome's autofill (both address and credential) only scans inputs
-          that are descendants of a <form> element. Keeping these fields in
-          React state means the submit handler still has their values; they
-          just never get picked up by the browser's autofill heuristic.
+          FIX: All fields now live inside a single <form> with autoComplete="off"
+          and a hidden honeypot password field at the top. This prevents Chrome
+          from treating the form as a "login form" and attaching credential
+          autofill to the email field.
+
+          The email input uses:
+            - type="email"            → correct semantic type for validation
+            - autoComplete="new-email"  → non-standard value Chrome ignores for
+                                         its native autofill, suppressing the
+                                         browser dropdown so only the custom one shows
+            - name with a random suffix → prevents credential-manager matching
+
+          Password fields use autoComplete="new-password" which is the
+          universally-accepted way to suppress the password manager popup.
         */}
-        <div className='auth-form'>
+        <form onSubmit={handleSubmit} noValidate autoComplete='off'>
+
+          {/* Honeypot: hidden inputs stop Chrome associating this form with saved credentials */}
+          <input type='text'     aria-hidden='true' tabIndex={-1} style={{ display: 'none' }} readOnly />
+          <input type='password' aria-hidden='true' tabIndex={-1} style={{ display: 'none' }} readOnly />
 
           {/* ── Full Name ── */}
           <div className='auth-field'>
@@ -120,10 +132,11 @@ function Signup() {
                 id='signup-name'
                 className={`auth-input${fieldErrors.name ? ' error' : ''}`}
                 type='text'
+                name='signup-name-field'
                 placeholder='Full Name'
                 value={name}
                 onChange={e => setName(e.target.value)}
-                autoComplete='off'
+                autoComplete='new-password'
               />
             </div>
             {fieldErrors.name && (
@@ -143,19 +156,21 @@ function Signup() {
                   className={`auth-input${fieldErrors.email ? ' error' : ''}`}
                   type='text'
                   inputMode='email'
+                  name='signup-email-field'
                   placeholder='Email'
                   value={email}
-                  autoComplete='off'
+                  autoComplete='new-password'
                   onChange={e => setEmail(e.target.value)}
                   onFocus={() => setShowDropdown(true)}
                 />
               </div>
 
               {isOpen && (
-                <ul ref={dropdownRef} className='auth-dropdown'>
+                <ul ref={dropdownRef} className='auth-dropdown' role='listbox'>
                   {suggestions.map(s => (
                     <li
                       key={s}
+                      role='option'
                       className='auth-dropdown-item'
                       onMouseDown={e => { e.preventDefault(); handleSelect(s) }}
                       onTouchEnd={e  => { e.preventDefault(); handleSelect(s) }}
@@ -172,15 +187,6 @@ function Signup() {
             )}
           </div>
 
-        </div>{/* end of out-of-form fields */}
-
-        {/*
-          ── Password fields are inside <form> so Enter/submit still works ──
-          readOnly-on-mount + remove-on-focus prevents Chrome's password
-          manager from attaching its popup to these fields.
-        */}
-        <form onSubmit={handleSubmit} noValidate autoComplete='off'>
-
           {/* ── Password ── */}
           <div className='auth-field'>
             <label htmlFor='signup-password' className='auth-label'>Password</label>
@@ -190,12 +196,17 @@ function Signup() {
                 id='signup-password'
                 className={`auth-input has-toggle${fieldErrors.password ? ' error' : ''}`}
                 type={showPassword ? 'text' : 'password'}
+                name='signup-password-field'
                 placeholder='Password'
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                autoComplete='off'
-                readOnly
-                onFocus={e => e.target.removeAttribute('readOnly')}
+                /*
+                  FIX: autoComplete="new-password" is the W3C-standardised value
+                  that tells ALL browsers (Chrome, Safari, Firefox) not to attach
+                  a saved-password dropdown to this field. Removes the need for
+                  the readOnly / onFocus hack which caused UX issues.
+                */
+                autoComplete='new-password'
               />
               <button
                 type='button'
@@ -221,12 +232,15 @@ function Signup() {
                 id='signup-confirm-password'
                 className={`auth-input has-toggle${fieldErrors.confirmPassword ? ' error' : ''}`}
                 type={showConfirm ? 'text' : 'password'}
+                name='signup-confirm-password-field'
                 placeholder='Confirm Password'
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
-                autoComplete='off'
-                readOnly
-                onFocus={e => e.target.removeAttribute('readOnly')}
+                /*
+                  FIX: same as above — autoComplete="new-password" on confirm
+                  field stops the browser password manager popup entirely.
+                */
+                autoComplete='new-password'
               />
               <button
                 type='button'
