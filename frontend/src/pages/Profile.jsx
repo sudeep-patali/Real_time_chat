@@ -347,9 +347,11 @@ function Profile() {
         {/* ── Hero ── */}
         <div className='profile-hero'>
           <div className='profile-hero-bg' />
+
+          {/* Avatar + Name only */}
           <div className='profile-hero-content'>
             <div className='profile-avatar-wrap'>
-              {loading ? <Skeleton width='96px' height='96px' radius='50%' /> : (
+              {loading ? <Skeleton width='88px' height='88px' radius='50%' /> : (
                 <>
                   <img
                     src={avatarSrc || generateAvatar(currentUser?.name || 'U')}
@@ -366,29 +368,46 @@ function Profile() {
 
             <div className='profile-identity'>
               {loading ? (
-                <>
-                  <Skeleton width='180px' height='26px' style={{ marginBottom: 8 }} />
-                  <Skeleton width='120px' height='16px' />
-                </>
+                <Skeleton width='160px' height='28px' />
               ) : (
                 <>
                   <h1 className='profile-hero-name'>{currentUser?.name}</h1>
-                  <p className='profile-hero-email'>{currentUser?.email}</p>
-                  <div className='profile-hero-status'>
-                    <span className='profile-status-icon'>{getStatusIcon()}</span>
-                    <span className='status-text-sm'>{getStatusLabel()}</span>
-                  </div>
-                  <div className='profile-badges'>
-                    <span className='badge role'>{currentUser?.role || 'member'}</span>
-                    <span className={`badge presence ${isOnline ? 'online' : 'offline'}`}>
-                      {isOnline ? '● Online' : '○ Offline'}
-                    </span>
-                  </div>
+                  <span className={`hero-online-badge ${isOnline ? 'online' : 'offline'}`}>
+                    {isOnline ? 'Online' : 'Offline'}
+                  </span>
                 </>
               )}
             </div>
           </div>
 
+          {/* Info card: email + status */}
+          {!loading && (
+            <div className='profile-info-card'>
+              <div className='profile-info-row'>
+                <span className='profile-info-icon'>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                  </svg>
+                </span>
+                <div className='profile-info-text'>
+                  <span className='profile-info-label'>Email Address</span>
+                  <span className='profile-info-value'>{currentUser?.email}</span>
+                </div>
+              </div>
+              <div className='profile-info-divider' />
+              <div className='profile-info-row'>
+                <span className='profile-info-icon'>
+                  <span className='profile-status-icon'>{getStatusIcon()}</span>
+                </span>
+                <div className='profile-info-text'>
+                  <span className='profile-info-label'>Current Status</span>
+                  <span className='profile-info-value'>{getStatusLabel()}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Presence strip */}
           {!loading && (
             <div className='presence-strip'>
               <div className='presence-item'>
