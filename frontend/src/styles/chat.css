@@ -733,6 +733,30 @@
   .input-bar {
     padding: 6px 10px 8px;
   }
+
+  /* Properly sized send button on small screens — no clipping */
+  .send-btn {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    flex-shrink: 0;
+  }
+
+  .send-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Keep attach & emoji buttons from pushing things off screen */
+  .attach-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .input-pill {
+    min-height: 38px;
+    padding: 7px 10px;
+  }
 }
 /* ══════════════════════════════════════
    CHAT SEARCH

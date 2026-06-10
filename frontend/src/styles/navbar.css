@@ -177,4 +177,9 @@
   .navbar-logout {
     display: none;   /* on mobile, logout lives in sidebar profile menu (Step 2) */
   }
+
+  /* Hide ALL icons on mobile — only hamburger + logo shown */
+  .navbar-right {
+    display: none;
+  }
 }
