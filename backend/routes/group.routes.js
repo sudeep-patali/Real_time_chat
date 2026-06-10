@@ -19,15 +19,16 @@ module.exports = (io) => {
   router.post('/invitation/:id/accept',          protect, withIo, grpCtrl.acceptInvitation)
   router.post('/invitation/:id/reject',          protect, withIo, grpCtrl.rejectInvitation)
 
-  // ── Admin: group-level management ─────────────────────────────────────
+  // ── Group-level management ─────────────────────────────────────────────
   router.put   ('/:id',                          protect, upload.single('avatar'), withIo, grpCtrl.updateGroup)
   router.delete('/:id',                          protect, withIo, grpCtrl.deleteGroup)
 
-  // ── Admin: member management ───────────────────────────────────────────
+  // ── Member management ──────────────────────────────────────────────────
   router.post  ('/:id/members',                  protect, withIo, grpCtrl.addMember)
   router.delete('/:id/members/:memberId',        protect, withIo, grpCtrl.removeMember)
+  router.post  ('/:id/admins/:memberId',         protect, withIo, grpCtrl.makeAdmin)   // NEW
 
-  // ── Admin: invitation management ──────────────────────────────────────
+  // ── Invitation management ──────────────────────────────────────────────
   router.get   ('/:id/invitations',              protect,         grpCtrl.getGroupInvitations)
   router.delete('/:id/invitations/:invId',       protect, withIo, grpCtrl.cancelInvitation)
 

@@ -8,6 +8,7 @@ const roomSchema = new mongoose.Schema({
   description:    { type: String, default: '' },
   lastMessage:    { type: mongoose.Schema.Types.ObjectId, ref: 'Message', default: null },
   createdBy:      { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  adminIds:       [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 
   // Message Request System
   status:      {

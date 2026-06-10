@@ -7,11 +7,20 @@ const { createNotification } = require('./notification.controller')
 // ─── helper: assert caller is group admin ──────────────────────────────────
 async function assertAdmin(roomId, userId) {
   const room = await Room.findById(roomId)
-  if (!room)                                        throw { status: 404, message: 'Group not found' }
-  if (!room.isGroup)                                throw { status: 400, message: 'Not a group' }
-  if (room.createdBy?.toString() !== userId.toString())
+  if (!room)     throw { status: 404, message: 'Group not found' }
+  if (!room.isGroup) throw { status: 400, message: 'Not a group' }
+  const isCreator = room.createdBy?.toString() === userId.toString()
+  const isCoAdmin = (room.adminIds || []).map(id => id.toString()).includes(userId.toString())
+  if (!isCreator && !isCoAdmin)
     throw { status: 403, message: 'Only the group admin can do this' }
   return room
+}
+
+// ─── helper: check if caller is an admin (no throw) ───────────────────────
+function isAdminOf(room, userId) {
+  const isCreator = room.createdBy?.toString() === userId.toString()
+  const isCoAdmin = (room.adminIds || []).map(id => id.toString()).includes(userId.toString())
+  return isCreator || isCoAdmin
 }
 
 // ─── helper: assert caller is a member ────────────────────────────────────
@@ -183,7 +192,6 @@ exports.acceptInvitation = async (req, res, next) => {
       const inviterUID   = invitation.invitedBy._id.toString()
 
       // 1. Make the accepting user's socket(s) join the Socket.IO room immediately
-      //    so they start receiving real-time group messages without a page reload
       const acceptingSockets = allSockets.filter(
         s => s.user?._id?.toString() === acceptingUID
       )
@@ -266,8 +274,6 @@ exports.rejectInvitation = async (req, res, next) => {
 
 // ──────────────────────────────────────────────────────────────────────────
 // POST /api/groups/:id/members
-// Admin adds a user directly (they must have accepted an invite first,
-// or admin force-adds; we also allow re-adding after leave)
 // ──────────────────────────────────────────────────────────────────────────
 exports.addMember = async (req, res, next) => {
   try {
@@ -298,16 +304,16 @@ exports.removeMember = async (req, res, next) => {
     const room = await assertAdmin(req.params.id, req.user._id)
 
     const memberId = req.params.memberId
-    if (memberId === room.createdBy?.toString())
-      return res.status(400).json({ message: 'Cannot remove the group admin' })
+    if (isAdminOf(room, memberId))
+      return res.status(400).json({ message: 'Cannot remove a group admin' })
 
     room.participantIds = room.participantIds.filter(id => id.toString() !== memberId)
     await room.save()
 
     if (req.io) {
       req.io.emit('group-member-removed', {
-        groupId:         room._id.toString(),
-        removedUserId:   memberId,
+        groupId:          room._id.toString(),
+        removedUserId:    memberId,
         removedByAdminId: req.user._id.toString()
       })
     }
@@ -321,7 +327,6 @@ exports.removeMember = async (req, res, next) => {
 
 // ──────────────────────────────────────────────────────────────────────────
 // DELETE /api/groups/:id
-// Admin deletes the group entirely
 // ──────────────────────────────────────────────────────────────────────────
 exports.deleteGroup = async (req, res, next) => {
   try {
@@ -344,18 +349,28 @@ exports.deleteGroup = async (req, res, next) => {
 
 // ──────────────────────────────────────────────────────────────────────────
 // PUT /api/groups/:id
-// Admin updates group name / description / avatar
+// All members can update avatar & description; only admins can rename
 // ──────────────────────────────────────────────────────────────────────────
 exports.updateGroup = async (req, res, next) => {
   try {
-    const room = await assertAdmin(req.params.id, req.user._id)
+    const room = await assertMember(req.params.id, req.user._id)
+    const callerIsAdmin = isAdminOf(room, req.user._id)
 
     const { groupName, description } = req.body
-    if (groupName?.trim())        room.groupName   = groupName.trim()
+
+    // Only admins can rename the group
+    if (groupName !== undefined) {
+      if (!callerIsAdmin)
+        return res.status(403).json({ message: 'Only admins can change the group name' })
+      if (groupName.trim()) room.groupName = groupName.trim()
+    }
+
+    // All members can update description and avatar
     if (description !== undefined) room.description = description.trim()
     if (req.file) {
       room.avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
     }
+
     await room.save()
     await room.populate('participantIds', 'name avatar isOnline')
 
@@ -367,8 +382,40 @@ exports.updateGroup = async (req, res, next) => {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// POST /api/groups/:id/admins/:memberId
+// Admin promotes a member to co-admin
+// ──────────────────────────────────────────────────────────────────────────
+exports.makeAdmin = async (req, res, next) => {
+  try {
+    const room = await assertAdmin(req.params.id, req.user._id)
+    const memberId = req.params.memberId
+
+    if (!room.participantIds.map(id => id.toString()).includes(memberId))
+      return res.status(400).json({ message: 'User is not a member of this group' })
+
+    if (isAdminOf(room, memberId))
+      return res.status(400).json({ message: 'User is already an admin' })
+
+    room.adminIds = [...(room.adminIds || []), memberId]
+    await room.save()
+    await room.populate('participantIds', 'name avatar isOnline')
+
+    if (req.io) {
+      req.io.to(req.params.id).emit('group_updated', {
+        roomId:   req.params.id,
+        adminIds: room.adminIds.map(id => id.toString())
+      })
+    }
+
+    res.json({ message: 'Member promoted to admin', room })
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ message: err.message })
+    next(err)
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // GET /api/groups/:id/invitations
-// Admin sees all pending invitations for the group
 // ──────────────────────────────────────────────────────────────────────────
 exports.getGroupInvitations = async (req, res, next) => {
   try {
@@ -389,7 +436,6 @@ exports.getGroupInvitations = async (req, res, next) => {
 
 // ──────────────────────────────────────────────────────────────────────────
 // DELETE /api/groups/:id/invitations/:invId
-// Admin cancels a pending invitation
 // ──────────────────────────────────────────────────────────────────────────
 exports.cancelInvitation = async (req, res, next) => {
   try {

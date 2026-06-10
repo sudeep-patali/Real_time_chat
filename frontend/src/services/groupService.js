@@ -16,9 +16,9 @@ export const createGroup = ({ groupName, description = '', memberIds, avatar = n
 export const getGroupById     = (roomId)         => api.get(`/rooms/${roomId}`)
 export const updateGroup      = (groupId, { groupName, description, avatar }) => {
   const form = new FormData()
-  if (groupName)    form.append('groupName',   groupName)
+  if (groupName)                 form.append('groupName',   groupName)
   if (description !== undefined) form.append('description', description)
-  if (avatar)       form.append('avatar', avatar)
+  if (avatar)                    form.append('avatar', avatar)
   return api.put(`/groups/${groupId}`, form, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
@@ -31,11 +31,12 @@ export const getPendingInvitations = ()                  => api.get('/groups/inv
 export const acceptInvitation      = (invitationId)      => api.post(`/groups/invitation/${invitationId}/accept`)
 export const rejectInvitation      = (invitationId)      => api.post(`/groups/invitation/${invitationId}/reject`)
 
-// ── Admin: member management ──────────────────────────────────────────────────
-export const addMember         = (groupId, userId)       => api.post(`/groups/${groupId}/members`, { userId })
-export const removeMember      = (groupId, userId)       => api.delete(`/groups/${groupId}/members/${userId}`)
-export const exitGroup         = (roomId)                => api.post(`/rooms/${roomId}/leave`)
+// ── Member management ─────────────────────────────────────────────────────────
+export const addMember    = (groupId, userId) => api.post(`/groups/${groupId}/members`, { userId })
+export const removeMember = (groupId, userId) => api.delete(`/groups/${groupId}/members/${userId}`)
+export const makeAdmin    = (groupId, userId) => api.post(`/groups/${groupId}/admins/${userId}`)  // NEW
+export const exitGroup    = (roomId)          => api.post(`/rooms/${roomId}/leave`)
 
-// ── Admin: invitation management ─────────────────────────────────────────────
-export const getGroupInvitations = (groupId)             => api.get(`/groups/${groupId}/invitations`)
-export const cancelInvitation    = (groupId, invId)      => api.delete(`/groups/${groupId}/invitations/${invId}`)
+// ── Invitation management ─────────────────────────────────────────────────────
+export const getGroupInvitations = (groupId)        => api.get(`/groups/${groupId}/invitations`)
+export const cancelInvitation    = (groupId, invId) => api.delete(`/groups/${groupId}/invitations/${invId}`)

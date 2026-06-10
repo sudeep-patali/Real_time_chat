@@ -13,7 +13,7 @@ import {
   ArrowLeft, MessageCircle, Bell, BellOff, Pencil,
   Users, MessageSquare, Image, Paperclip, Info,
   User, Calendar, Trash2, LogOut, Flag, Clock,
-  Camera, Check, X, UserPlus
+  Camera, Check, X, UserPlus, ShieldCheck
 } from 'lucide-react'
 import '../styles/chat.css'
 import '../styles/groupinfo.css'
@@ -38,6 +38,29 @@ function StatCard({ icon, label, value }) {
   )
 }
 
+// ── Avatar change confirmation dialog ────────────────────────────────────
+function AvatarChangeDialog({ onConfirm, onCancel }) {
+  return (
+    <div className="gi-dialog-overlay" onClick={onCancel}>
+      <div className="gi-dialog" onClick={e => e.stopPropagation()}>
+        <div className="gi-dialog-icon">
+          <Camera size={24} />
+        </div>
+        <h3 className="gi-dialog-title">Change Group Picture</h3>
+        <p className="gi-dialog-body">Do you want to change the group profile picture?</p>
+        <div className="gi-dialog-actions">
+          <button className="gi-dialog-btn gi-dialog-btn--cancel" onClick={onCancel}>
+            No
+          </button>
+          <button className="gi-dialog-btn gi-dialog-btn--confirm" onClick={onConfirm}>
+            Yes
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function GroupInfo() {
   const { roomId }     = useParams()
   const navigate       = useNavigate()
@@ -58,13 +81,16 @@ export default function GroupInfo() {
   const [busy,          setBusy]          = useState('')
   const [activeTab,     setActiveTab]     = useState('info')
 
-  // Edit mode
+  // Edit mode — accessible to all members
   const [editMode,    setEditMode]    = useState(false)
   const [editName,    setEditName]    = useState('')
   const [editDesc,    setEditDesc]    = useState('')
   const [editAvatar,  setEditAvatar]  = useState(null)
   const [editPreview, setEditPreview] = useState(null)
   const [editBusy,    setEditBusy]    = useState(false)
+
+  // Avatar change confirmation dialog (shown on avatar click outside edit mode)
+  const [showAvatarDialog, setShowAvatarDialog] = useState(false)
 
   // Invite panel
   const [showInvite,     setShowInvite]     = useState(false)
@@ -85,6 +111,12 @@ export default function GroupInfo() {
     roomService.getRoomById(roomId)
       .then(res => {
         const room = res.data.room
+        // Build a unified admin ID set: createdBy + adminIds
+        const adminIdSet = new Set([
+          room.createdBy?._id?.toString() || room.createdBy?.toString(),
+          ...(room.adminIds || []).map(id => id?.toString())
+        ].filter(Boolean))
+
         const g = {
           id:          room._id || room.id,
           name:        room.groupName || 'Group',
@@ -92,13 +124,17 @@ export default function GroupInfo() {
           createdAt:   room.createdAt,
           createdBy:   room.createdBy,
           avatarUrl:   room.avatarUrl || null,
-          members:     (room.participantIds || []).map(p => ({
-            id:       p._id || p.id,
-            name:     p.name || 'Unknown',
-            avatar:   p.avatar || null,
-            isOnline: p.isOnline || false,
-            role:     room.createdBy?._id === (p._id || p.id) ? 'admin' : 'member'
-          }))
+          adminIds:    [...adminIdSet],
+          members:     (room.participantIds || []).map(p => {
+            const pid = (p._id || p.id)?.toString()
+            return {
+              id:       pid,
+              name:     p.name || 'Unknown',
+              avatar:   p.avatar || null,
+              isOnline: p.isOnline || false,
+              role:     adminIdSet.has(pid) ? 'admin' : 'member'
+            }
+          })
         }
         setGroup(g)
         setEditName(g.name)
@@ -126,7 +162,9 @@ export default function GroupInfo() {
     if (roomId) clearUnread(roomId)
   }, [roomId, clearUnread])
 
-  const isAdmin = group?.createdBy?._id === currentUser?.id ||
+  // isAdmin: true if current user is the creator OR in adminIds
+  const isAdmin = group?.adminIds?.includes(currentUser?.id?.toString()) ||
+                  group?.createdBy?._id === currentUser?.id ||
                   group?.createdBy?.toString() === currentUser?.id?.toString()
 
   const loadPendingInvites = useCallback(() => {
@@ -203,18 +241,71 @@ export default function GroupInfo() {
     } catch (err) { alert(err.response?.data?.message || 'Failed to remove member.') }
   }
 
+  const handleMakeAdmin = async (memberId, memberName) => {
+    if (!window.confirm(`Make ${memberName} a group admin?`)) return
+    try {
+      await groupService.makeAdmin(group.id, memberId)
+      setGroup(g => ({
+        ...g,
+        adminIds: [...(g.adminIds || []), memberId],
+        members:  g.members.map(m =>
+          m.id === memberId ? { ...m, role: 'admin' } : m
+        )
+      }))
+    } catch (err) { alert(err.response?.data?.message || 'Failed to make admin.') }
+  }
+
+  // Save edits — members can update avatar/desc, only admins can rename
   const handleSaveEdit = async () => {
     setEditBusy(true)
     try {
-      const res = await groupService.updateGroup(group.id, {
-        groupName: editName.trim(), description: editDesc.trim(), avatar: editAvatar
-      })
+      const payload = { description: editDesc.trim(), avatar: editAvatar }
+      if (isAdmin) payload.groupName = editName.trim()
+
+      const res = await groupService.updateGroup(group.id, payload)
       const updated = res.data.room
-      setGroup(g => ({ ...g, name: updated.groupName, description: updated.description || '', avatarUrl: updated.avatarUrl || g.avatarUrl }))
-      updateRoom(roomId, { groupName: updated.groupName, description: updated.description, avatarUrl: updated.avatarUrl })
+      setGroup(g => ({
+        ...g,
+        name:        isAdmin ? (updated.groupName || g.name) : g.name,
+        description: updated.description ?? g.description,
+        avatarUrl:   updated.avatarUrl || g.avatarUrl
+      }))
+      updateRoom(roomId, {
+        groupName:   updated.groupName,
+        description: updated.description,
+        avatarUrl:   updated.avatarUrl
+      })
       setEditMode(false)
-    } catch { alert('Failed to update group info.') }
+      setEditPreview(null)
+      setEditAvatar(null)
+    } catch (err) { alert(err.response?.data?.message || 'Failed to update group info.') }
     finally { setEditBusy(false) }
+  }
+
+  // Avatar click outside edit mode → show confirmation dialog
+  const handleAvatarClick = () => {
+    setShowAvatarDialog(true)
+  }
+
+  const handleAvatarDialogConfirm = () => {
+    setShowAvatarDialog(false)
+    document.getElementById('gi-quick-avatar-input')?.click()
+  }
+
+  // Immediately upload avatar without entering edit mode
+  const handleQuickAvatarChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const preview = URL.createObjectURL(file)
+    setEditBusy(true)
+    try {
+      const res = await groupService.updateGroup(group.id, { avatar: file })
+      const updated = res.data.room
+      setGroup(g => ({ ...g, avatarUrl: updated.avatarUrl || preview }))
+      updateRoom(roomId, { avatarUrl: updated.avatarUrl })
+    } catch (err) { alert(err.response?.data?.message || 'Failed to update avatar.') }
+    finally { setEditBusy(false) }
+    e.target.value = ''
   }
 
   const toggleInviteUser = (u) => {
@@ -250,7 +341,9 @@ export default function GroupInfo() {
       <button className="gi-back-btn" onClick={() => navigate(-1)}>
         <ArrowLeft size={20} />
       </button>
-      <span className="gi-topbar-title">Group Info</span>
+      <span className="gi-topbar-title">
+        {editMode ? 'Edit Group' : 'Group Info'}
+      </span>
     </div>
   )
 
@@ -289,6 +382,23 @@ export default function GroupInfo() {
     <div className="gi-page">
       <TopBar />
 
+      {/* Avatar change confirmation dialog */}
+      {showAvatarDialog && (
+        <AvatarChangeDialog
+          onConfirm={handleAvatarDialogConfirm}
+          onCancel={() => setShowAvatarDialog(false)}
+        />
+      )}
+
+      {/* Hidden file input for quick avatar change (outside edit mode) */}
+      <input
+        id="gi-quick-avatar-input"
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handleQuickAvatarChange}
+      />
+
       <div className="gi-scroll">
         <div className="gi-inner">
 
@@ -296,6 +406,7 @@ export default function GroupInfo() {
           <div className="gi-hero-card">
             {editMode ? (
               <div className="gi-edit-form">
+                {/* Avatar picker inside edit mode */}
                 <div
                   className="gi-edit-avatar-wrap"
                   onClick={() => document.getElementById('gi-avatar-input').click()}
@@ -319,13 +430,24 @@ export default function GroupInfo() {
                     }}
                   />
                 </div>
-                <input
-                  className="gi-edit-input"
-                  value={editName}
-                  maxLength={60}
-                  onChange={e => setEditName(e.target.value)}
-                  placeholder="Group name"
-                />
+
+                {/* Group name — admins only; read-only for regular members */}
+                {isAdmin ? (
+                  <input
+                    className="gi-edit-input"
+                    value={editName}
+                    maxLength={60}
+                    onChange={e => setEditName(e.target.value)}
+                    placeholder="Group name"
+                  />
+                ) : (
+                  <div className="gi-edit-name-readonly">
+                    <span className="gi-edit-name-text">{group.name}</span>
+                    <span className="gi-edit-name-hint">Only admins can change the group name</span>
+                  </div>
+                )}
+
+                {/* Description — editable by all members */}
                 <textarea
                   className="gi-edit-textarea"
                   value={editDesc}
@@ -334,6 +456,7 @@ export default function GroupInfo() {
                   onChange={e => setEditDesc(e.target.value)}
                   placeholder="Description (optional)"
                 />
+
                 <div className="gi-edit-actions">
                   <button
                     className="gi-cancel-edit-btn"
@@ -352,9 +475,16 @@ export default function GroupInfo() {
               </div>
             ) : (
               <>
+                {/* Clickable avatar with hover overlay → confirmation dialog */}
                 <div className="gi-avatar-ring">
-                  <img src={groupAvatarSrc} alt={group.name} className="gi-hero-avatar" />
+                  <div className="gi-hero-avatar-wrap" onClick={handleAvatarClick}>
+                    <img src={groupAvatarSrc} alt={group.name} className="gi-hero-avatar" />
+                    <div className="gi-hero-avatar-overlay">
+                      <Camera size={16} />
+                    </div>
+                  </div>
                 </div>
+
                 <h2 className="gi-hero-name">{group.name}</h2>
                 <p className="gi-hero-sub">
                   Group · {group.members.length} members
@@ -373,7 +503,7 @@ export default function GroupInfo() {
                   <StatCard icon={<Paperclip size={16} />} label="Docs" value={docs.length} />
                 </div>
 
-                {/* Action buttons */}
+                {/* Action buttons — Edit Group visible to ALL members */}
                 <div className="gi-action-row">
                   <button
                     className="gi-action-btn"
@@ -394,15 +524,13 @@ export default function GroupInfo() {
                     <span className="gi-action-label">{isMuted ? 'Unmute' : 'Mute'}</span>
                   </button>
 
-                  {isAdmin && (
-                    <button
-                      className="gi-action-btn"
-                      onClick={() => setEditMode(true)}
-                    >
-                      <span className="gi-action-icon"><Pencil size={18} /></span>
-                      <span className="gi-action-label">Edit</span>
-                    </button>
-                  )}
+                  <button
+                    className="gi-action-btn"
+                    onClick={() => setEditMode(true)}
+                  >
+                    <span className="gi-action-icon"><Pencil size={18} /></span>
+                    <span className="gi-action-label">Edit Group</span>
+                  </button>
                 </div>
               </>
             )}
@@ -607,9 +735,12 @@ export default function GroupInfo() {
 
               {/* Member list */}
               {group.members.map((member, i) => {
-                const mInit   = (member.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-                const isMe    = member.id?.toString() === currentUser?.id?.toString()
-                const canRemove = isAdmin && !isMe && member.role !== 'admin'
+                const mInit        = (member.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+                const isMe         = member.id?.toString() === currentUser?.id?.toString()
+                const memberIsAdmin = member.role === 'admin'
+                const canRemove    = isAdmin && !isMe && !memberIsAdmin
+                const canMakeAdmin = isAdmin && !isMe && !memberIsAdmin
+
                 return (
                   <div key={member.id}>
                     <div className="gi-member-row">
@@ -632,22 +763,37 @@ export default function GroupInfo() {
                           {member.name}
                           {isMe && <span className="gi-member-you"> (You)</span>}
                         </span>
-                        <span className={`gi-member-sub${member.isOnline && member.role !== 'admin' ? ' gi-member-sub--online' : ''}`}>
-                          {member.role === 'admin' ? 'Group Admin' : member.isOnline ? 'Online' : 'Member'}
+                        <span className={`gi-member-sub${member.isOnline && !memberIsAdmin ? ' gi-member-sub--online' : ''}`}>
+                          {memberIsAdmin ? 'Group Admin' : member.isOnline ? 'Online' : 'Member'}
                         </span>
                       </div>
 
-                      {member.role === 'admin' && (
-                        <span className="gi-admin-badge">Admin</span>
-                      )}
-                      {canRemove && (
-                        <button
-                          className="gi-remove-btn"
-                          onClick={() => handleRemoveMember(member.id, member.name)}
-                        >
-                          Remove
-                        </button>
-                      )}
+                      <div className="gi-member-actions">
+                        {memberIsAdmin && (
+                          <span className="gi-admin-badge">
+                            <ShieldCheck size={12} style={{ marginRight: 3 }} />
+                            Admin
+                          </span>
+                        )}
+                        {canMakeAdmin && (
+                          <button
+                            className="gi-make-admin-btn"
+                            onClick={() => handleMakeAdmin(member.id, member.name)}
+                            title="Make Admin"
+                          >
+                            <ShieldCheck size={14} />
+                            Make Admin
+                          </button>
+                        )}
+                        {canRemove && (
+                          <button
+                            className="gi-remove-btn"
+                            onClick={() => handleRemoveMember(member.id, member.name)}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {i < group.members.length - 1 && <div className="gi-row-divider" />}
                   </div>
