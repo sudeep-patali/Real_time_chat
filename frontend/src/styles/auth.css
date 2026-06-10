@@ -20,6 +20,7 @@
   box-shadow: 0 8px 40px rgba(0,0,0,0.2);
 }
 
+/* ── Logo ── */
 .auth-logo-wrap {
   display: flex;
   flex-direction: column;
@@ -56,6 +57,7 @@
   text-align: center;
 }
 
+/* ── Form layout ── */
 .auth-form {
   display: flex;
   flex-direction: column;
@@ -68,10 +70,25 @@
   gap: 4px;
 }
 
-.auth-field-inner {
+.auth-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+/* 
+  .auth-field-wrap is the dropdown anchor.
+  position: relative here — NOT on .auth-field-inner —
+  so the dropdown width matches the input exactly.
+*/
+.auth-field-wrap {
   position: relative;
+}
+
+.auth-field-inner {
   display: flex;
   align-items: center;
+  position: relative;
 }
 
 .auth-field-icon {
@@ -81,8 +98,10 @@
   display: flex;
   align-items: center;
   pointer-events: none;
+  z-index: 1;
 }
 
+/* ── Input ── */
 .auth-input {
   width: 100%;
   padding: 11px 14px 11px 44px;
@@ -95,29 +114,24 @@
 }
 
 .auth-input:focus {
+  outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-input-focus);
 }
 
-.auth-input.error {
-  border-color: var(--color-error);
-}
+.auth-input.error { border-color: var(--color-error); }
+.auth-input.error:focus { box-shadow: 0 0 0 3px rgba(241,92,109,0.2); }
+.auth-input::placeholder { color: var(--color-text-dim); }
 
-.auth-input.error:focus {
-  box-shadow: 0 0 0 3px rgba(241,92,109,0.2);
-}
-
-.auth-input::placeholder {
-  color: var(--color-text-dim);
-}
+.auth-input.has-toggle { padding-right: 42px; }
 
 .auth-field-error {
   font-size: 12px;
   color: var(--color-error);
   padding-left: 2px;
-  min-height: 16px;
 }
 
+/* ── Password toggle ── */
 .auth-password-toggle {
   position: absolute;
   right: 12px;
@@ -138,10 +152,59 @@
   background: var(--color-btn-ghost-hover);
 }
 
-.auth-input.has-toggle {
-  padding-right: 42px;
+/* ── Custom email dropdown ──
+   Anchored to .auth-field-wrap (position:relative).
+   top: calc(100% + 4px) puts it 4px below the input.
+   z-index: 200 keeps it above everything in the card.
+   No overflow:hidden anywhere in the chain — it can spill freely.
+*/
+.auth-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.13);
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow: hidden;
 }
 
+.auth-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  font-size: 14px;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.auth-dropdown-item:hover,
+.auth-dropdown-item:active {
+  background: rgba(0,168,132,0.08);
+}
+
+.auth-dropdown-icon {
+  color: var(--color-text-dim);
+  flex-shrink: 0;
+}
+
+.auth-dropdown-email {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Submit button ── */
 .auth-btn {
   width: 100%;
   padding: 12px;
@@ -156,19 +219,11 @@
   margin-top: 4px;
 }
 
-.auth-btn:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
+.auth-btn:hover:not(:disabled) { background: var(--color-primary-hover); }
+.auth-btn:active:not(:disabled) { transform: scale(0.99); }
+.auth-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-.auth-btn:active:not(:disabled) {
-  transform: scale(0.99);
-}
-
-.auth-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
+/* ── Error banner ── */
 .auth-error-banner {
   display: flex;
   align-items: center;
@@ -179,12 +234,12 @@
   border-radius: 10px;
   color: var(--color-error);
   font-size: 13px;
+  margin-bottom: 4px;
 }
 
-.auth-error-banner svg {
-  flex-shrink: 0;
-}
+.auth-error-banner svg { flex-shrink: 0; }
 
+/* ── Footer ── */
 .auth-footer {
   margin-top: 24px;
   text-align: center;
@@ -197,9 +252,7 @@
   font-weight: 600;
 }
 
-.auth-footer a:hover {
-  text-decoration: underline;
-}
+.auth-footer a:hover { text-decoration: underline; }
 
 .auth-divider {
   height: 1px;
@@ -207,78 +260,9 @@
   margin: 4px 0;
 }
 
-/* Ensure browser autocomplete / autofill dropdown anchors to the input
-   on mobile rather than the top of a positioned ancestor */
+/* ── Mobile ── */
 @media (max-width: 480px) {
   .auth-card {
     padding: 32px 20px 28px;
-    overflow: visible;
-  }
-
-  .auth-field-icon {
-    z-index: 1;
-  }
-}
-/* ── Custom email autocomplete dropdown ── */
-.auth-suggestions {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-top: none;
-  border-radius: 0 0 12px 12px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.10);
-  list-style: none;
-  margin: 0;
-  padding: 4px 6px 6px;
-  overflow: hidden;
-}
-
-.auth-suggestion-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  font-size: 13.5px;
-  color: var(--color-text);
-  cursor: pointer;
-  border-radius: 8px;
-  transition: background 0.13s ease, color 0.13s ease;
-}
-
-.auth-suggestion-item:not(:last-child) {
-  margin-bottom: 2px;
-}
-
-.auth-suggestion-item:hover {
-  background: rgba(0, 168, 132, 0.09);
-  color: var(--color-primary);
-}
-
-.auth-suggestion-item:hover .auth-suggestion-icon {
-  color: var(--color-primary);
-}
-
-.auth-suggestion-icon {
-  color: var(--color-text-dim);
-  flex-shrink: 0;
-  transition: color 0.13s ease;
-}
-
-.auth-suggestion-email {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  letter-spacing: 0.01em;
-}
-
-@media (max-width: 480px) {
-  .auth-card {
-    padding: 32px 20px 28px;
-    overflow: visible;
   }
 }

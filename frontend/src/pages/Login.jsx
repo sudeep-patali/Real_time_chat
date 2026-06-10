@@ -23,35 +23,43 @@ function saveEmail(email) {
 }
 
 function Login() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail]             = useState('')
+  const [password, setPassword]       = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
   const [showPassword, setShowPassword] = useState(false)
-  const [showSuggestions, setShowSuggestions] = useState(false)
-  const [suggestions, setSuggestions] = useState([])
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [suggestions, setSuggestions]   = useState([])
 
-  const emailWrapRef = useRef(null)
+  const emailRef    = useRef(null)
+  const dropdownRef = useRef(null)
   const { login, loading, error } = useAuth()
 
-  // Filter saved emails based on current input
+  /* filter suggestions whenever email value changes */
   useEffect(() => {
     const saved = getSavedEmails()
-    if (email.trim() === '') {
-      setSuggestions(saved)
-    } else {
-      setSuggestions(saved.filter(e => e.toLowerCase().includes(email.toLowerCase())))
-    }
+    setSuggestions(
+      email.trim() === ''
+        ? saved
+        : saved.filter(e => e.toLowerCase().includes(email.toLowerCase()))
+    )
   }, [email])
 
-  // Close dropdown on outside click
+  /* close dropdown on outside click */
   useEffect(() => {
-    const handleClick = (e) => {
-      if (emailWrapRef.current && !emailWrapRef.current.contains(e.target)) {
-        setShowSuggestions(false)
+    const onOutside = (e) => {
+      if (
+        emailRef.current    && !emailRef.current.contains(e.target) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target)
+      ) {
+        setShowDropdown(false)
       }
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    document.addEventListener('mousedown', onOutside)
+    document.addEventListener('touchstart', onOutside)
+    return () => {
+      document.removeEventListener('mousedown', onOutside)
+      document.removeEventListener('touchstart', onOutside)
+    }
   }, [])
 
   const handleSubmit = async (e) => {
@@ -63,14 +71,18 @@ function Login() {
     }
     setFieldErrors({})
     saveEmail(email)
-    setShowSuggestions(false)
+    setShowDropdown(false)
     await login(email, password)
   }
 
-  const handleSelectSuggestion = (val) => {
+  const handleSelect = (val) => {
     setEmail(val)
-    setShowSuggestions(false)
+    setShowDropdown(false)
+    /* move focus to password after picking an email */
+    document.getElementById('login-password')?.focus()
   }
+
+  const isOpen = showDropdown && suggestions.length > 0
 
   return (
     <div className='auth-shell'>
@@ -89,53 +101,58 @@ function Login() {
           </div>
         )}
 
-        <form className='auth-form' onSubmit={handleSubmit} noValidate>
+        <form className='auth-form' onSubmit={handleSubmit} noValidate autoComplete='off'>
 
-          {/* Email field with custom autocomplete */}
+          {/* ── Email ── */}
           <div className='auth-field'>
-            <label htmlFor='login-email' className='sr-only'>Email</label>
-            <div className='auth-field-inner' ref={emailWrapRef}>
-              <span className='auth-field-icon'>
-                <Mail size={16} />
-              </span>
-              <input
-                id='login-email'
-                name='email'
-                className={`auth-input${fieldErrors.email ? ' error' : ''}`}
-                type='email'
-                placeholder='Email'
-                value={email}
-                autoComplete='off'
-                onChange={e => setEmail(e.target.value)}
-                onFocus={() => setShowSuggestions(true)}
-              />
+            <label htmlFor='login-email' className='auth-label'>Email</label>
 
-              {/* Custom suggestions dropdown — anchored to input bottom */}
-              {showSuggestions && suggestions.length > 0 && (
-                <ul className='auth-suggestions'>
-                  {suggestions.map((s) => (
+            {/* wrapper is the anchor for the dropdown */}
+            <div className='auth-field-wrap'>
+              <div className='auth-field-inner'>
+                <span className='auth-field-icon'><Mail size={16} /></span>
+                <input
+                  ref={emailRef}
+                  id='login-email'
+                  name='email'
+                  className={`auth-input${fieldErrors.email ? ' error' : ''}`}
+                  type='email'
+                  placeholder='Email'
+                  value={email}
+                  autoComplete='off'
+                  onChange={e => setEmail(e.target.value)}
+                  onFocus={() => setShowDropdown(true)}
+                />
+              </div>
+
+              {/* dropdown sits inside .auth-field-wrap so it inherits the same width */}
+              {isOpen && (
+                <ul ref={dropdownRef} className='auth-dropdown'>
+                  {suggestions.map(s => (
                     <li
                       key={s}
-                      className='auth-suggestion-item'
-                      onMouseDown={() => handleSelectSuggestion(s)}
+                      className='auth-dropdown-item'
+                      onMouseDown={e => { e.preventDefault(); handleSelect(s) }}
+                      onTouchEnd={e  => { e.preventDefault(); handleSelect(s) }}
                     >
-                      <Mail size={14} className='auth-suggestion-icon' />
-                      <span className='auth-suggestion-email'>{s}</span>
+                      <Mail size={14} className='auth-dropdown-icon' />
+                      <span className='auth-dropdown-email'>{s}</span>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
 
-            <span className='auth-field-error'>{fieldErrors.email || ''}</span>
+            {fieldErrors.email && (
+              <span className='auth-field-error'>{fieldErrors.email}</span>
+            )}
           </div>
 
+          {/* ── Password ── */}
           <div className='auth-field'>
-            <label htmlFor='login-password' className='sr-only'>Password</label>
+            <label htmlFor='login-password' className='auth-label'>Password</label>
             <div className='auth-field-inner'>
-              <span className='auth-field-icon'>
-                <Lock size={16} />
-              </span>
+              <span className='auth-field-icon'><Lock size={16} /></span>
               <input
                 id='login-password'
                 name='password'
@@ -156,14 +173,12 @@ function Login() {
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            <span className='auth-field-error'>{fieldErrors.password || ''}</span>
+            {fieldErrors.password && (
+              <span className='auth-field-error'>{fieldErrors.password}</span>
+            )}
           </div>
 
-          <button
-            type='submit'
-            className='auth-btn'
-            disabled={loading}
-          >
+          <button type='submit' className='auth-btn' disabled={loading}>
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
 
