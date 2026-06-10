@@ -4,13 +4,16 @@ import { Search, X, ArrowLeft, MessageCircle, Users } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useChatStore } from '../store/chatStore'
 import { useSocket } from '../hooks/useSocket'
+import { useMobileNav } from '../hooks/useMobileNav'
 import * as userService from '../services/userService'
 import * as roomService from '../services/roomService'
 import { SEND_REQUEST } from '../socket/socketEvents'
 import { generateAvatar } from '../utils/generateAvatar'
 import Navbar from '../components/Navbar'
 import Sidebar from '../components/Sidebar'
+import MobilePageHeader from '../components/MobilePageHeader'
 import '../styles/findpeople.css'
+import '../styles/mobile-page.css'
 
 // ─── Profile Preview Modal ─────────────────────────────────────────────────────
 function ProfilePreview({ user, onClose, onStartChat, loading }) {
@@ -143,13 +146,127 @@ function SkeletonRows() {
   )
 }
 
+// ─── Shared inner content (used by both mobile and desktop) ───────────────────
+function FindPeopleContent({
+  query, setQuery,
+  loadingAll, searching,
+  displayList, isFiltering,
+  onlineUsers, offlineUsers,
+  previewUser, setPreviewUser,
+  startingChat, handleStartChat,
+}) {
+  const searchInputRef = useRef(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => searchInputRef.current?.focus(), 80)
+    return () => clearTimeout(t)
+  }, [])
+
+  return (
+    <>
+      {/* ── Search input ── */}
+      <div className='fp-search-wrap'>
+        <div className='fp-search-box'>
+          <Search size={16} className='fp-search-icon' />
+          <input
+            ref={searchInputRef}
+            id='find-people-search'
+            name='find-people-search'
+            className='fp-search-input'
+            type='text'
+            placeholder='Search by name or email…'
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            autoComplete='off'
+            spellCheck={false}
+          />
+          {query && (
+            <button
+              className='fp-search-clear'
+              onClick={() => setQuery('')}
+              title='Clear'
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── User list ── */}
+      <div className='fp-list'>
+
+        {loadingAll && !isFiltering && <SkeletonRows />}
+
+        {!loadingAll && isFiltering && (
+          <>
+            {displayList.length > 0 && (
+              <SectionLabel label={`Results for "${query}"`} count={displayList.length} />
+            )}
+            {displayList.map(user => (
+              <UserRow key={user.id} user={user} query={query} onPreview={setPreviewUser} />
+            ))}
+            {displayList.length === 0 && !searching && (
+              <div className='fp-empty'>
+                <Search size={40} className='fp-empty-icon' />
+                <p className='fp-empty-text'>No results for &ldquo;{query}&rdquo;</p>
+                <p className='fp-empty-hint'>Try a different name or email</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {!loadingAll && !isFiltering && (
+          <>
+            {onlineUsers.length === 0 && offlineUsers.length === 0 && (
+              <div className='fp-empty'>
+                <Users size={40} className='fp-empty-icon' />
+                <p className='fp-empty-text'>No other users yet</p>
+                <p className='fp-empty-hint'>Invite friends to join!</p>
+              </div>
+            )}
+
+            {onlineUsers.length > 0 && (
+              <>
+                <SectionLabel label='Online' count={onlineUsers.length} />
+                {onlineUsers.map(user => (
+                  <UserRow key={user.id} user={user} query='' onPreview={setPreviewUser} />
+                ))}
+              </>
+            )}
+
+            {offlineUsers.length > 0 && (
+              <>
+                <SectionLabel label='People' count={offlineUsers.length} />
+                {offlineUsers.map(user => (
+                  <UserRow key={user.id} user={user} query='' onPreview={setPreviewUser} />
+                ))}
+              </>
+            )}
+          </>
+        )}
+
+      </div>
+
+      {/* ── Profile Preview Modal ── */}
+      {previewUser && (
+        <ProfilePreview
+          user={previewUser}
+          onClose={() => setPreviewUser(null)}
+          onStartChat={handleStartChat}
+          loading={startingChat}
+        />
+      )}
+    </>
+  )
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 function FindPeople() {
   const [allUsers,       setAllUsers]       = useState([])
   const [query,          setQuery]          = useState('')
   const [loadingAll,     setLoadingAll]     = useState(true)
   const [searching,      setSearching]      = useState(false)
-  const [searchResults,  setSearchResults]  = useState(null) // null = not searching
+  const [searchResults,  setSearchResults]  = useState(null)
   const [previewUser,    setPreviewUser]    = useState(null)
   const [startingChat,   setStartingChat]   = useState(false)
 
@@ -158,6 +275,7 @@ function FindPeople() {
   const { emit }        = useSocket()
   const rooms           = useChatStore(state => state.rooms)
   const debounceRef     = useRef(null)
+  const { isMobile }    = useMobileNav()
 
   // ── Load all users on mount ─────────────────────────────────────────────────
   useEffect(() => {
@@ -177,7 +295,6 @@ function FindPeople() {
       return
     }
 
-    // Instant client-side filter
     const q = query.toLowerCase().trim()
     const clientFiltered = allUsers.filter(u =>
       u.name.toLowerCase().includes(q) ||
@@ -185,7 +302,6 @@ function FindPeople() {
     )
     setSearchResults(clientFiltered)
 
-    // Debounced API search for freshness
     setSearching(true)
     debounceRef.current = setTimeout(async () => {
       try {
@@ -202,9 +318,6 @@ function FindPeople() {
   }, [query, allUsers])
 
   // ── Start chat ──────────────────────────────────────────────────────────────
-  // FIX (Issue 1 + 3): Build a fully-populated otherUser object and include
-  // proper participantIds so the chat header and sidebar display correctly
-  // immediately — without waiting for a server re-fetch.
   const handleStartChat = useCallback(async (user) => {
     setStartingChat(true)
     try {
@@ -225,8 +338,6 @@ function FindPeople() {
 
       const roomId = (room._id || room.id)?.toString()
 
-      // FIX Issue 1: Build a complete otherUser with id, name, avatar so the
-      // chat header can display the name immediately.
       const otherUser = {
         id:     (user.id || user._id)?.toString(),
         _id:    (user.id || user._id)?.toString(),
@@ -235,8 +346,6 @@ function FindPeople() {
         email:  user.email,
       }
 
-      // FIX Issue 1: participantIds must contain full objects (with id + name)
-      // so that Chat.jsx getDisplayName() and otherUserId derivation work.
       const participantObjects = (room.participantIds || []).map(p => {
         if (typeof p === 'object') {
           return { ...p, id: (p._id || p.id)?.toString(), _id: (p._id || p.id)?.toString() }
@@ -246,10 +355,6 @@ function FindPeople() {
         return { id: pid, _id: pid, name: currentUser?.name, avatar: currentUser?.avatar }
       })
 
-      // FIX Issue 3: Add the new room to the sender's sidebar immediately
-      // FIX BUG 1: Include requestedBy as the current user's ID so that
-      // Chat.jsx can detect the sender vs receiver and NOT show the
-      // MessageRequestBanner to the person who initiated the chat.
       const formattedRoom = {
         id:             roomId,
         _id:            roomId,
@@ -265,7 +370,6 @@ function FindPeople() {
 
       useChatStore.getState().addRoom(formattedRoom)
 
-      // Notify the receiver via Socket.IO
       emit(SEND_REQUEST, {
         receiverId: user.id || user._id,
         roomId,
@@ -285,6 +389,36 @@ function FindPeople() {
   const onlineUsers  = !isFiltering ? displayList.filter(u => u.isOnline)  : []
   const offlineUsers = !isFiltering ? displayList.filter(u => !u.isOnline) : []
 
+  const sharedProps = {
+    query, setQuery,
+    loadingAll, searching,
+    displayList, isFiltering,
+    onlineUsers, offlineUsers,
+    previewUser, setPreviewUser,
+    startingChat, handleStartChat,
+  }
+
+  // ── MOBILE: full-screen page ────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div className='mph-shell'>
+        <MobilePageHeader
+          title='New Chat'
+          fallbackPath='/'
+          trailing={
+            searching
+              ? <span className='mph-status-pill'>searching…</span>
+              : null
+          }
+        />
+        <div className='mph-content'>
+          <FindPeopleContent {...sharedProps} />
+        </div>
+      </div>
+    )
+  }
+
+  // ── DESKTOP / TABLET: original layout unchanged ─────────────────────────────
   return (
     <div className='fp-shell'>
       <Navbar />
@@ -292,8 +426,6 @@ function FindPeople() {
         <Sidebar />
 
         <div className='fp-main'>
-
-          {/* ── Top bar ── */}
           <div className='fp-topbar'>
             <button
               className='btn btn-ghost btn-icon fp-back-btn'
@@ -308,103 +440,9 @@ function FindPeople() {
             )}
           </div>
 
-          {/* ── Search input ── */}
-          <div className='fp-search-wrap'>
-            <div className='fp-search-box'>
-              <Search size={16} className='fp-search-icon' />
-              <input
-                id='find-people-search'
-                name='find-people-search'
-                className='fp-search-input'
-                type='text'
-                placeholder='Search by name or email…'
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                autoFocus
-                autoComplete='off'
-                spellCheck={false}
-              />
-              {query && (
-                <button
-                  className='fp-search-clear'
-                  onClick={() => setQuery('')}
-                  title='Clear'
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* ── User list ── */}
-          <div className='fp-list'>
-
-            {/* Loading skeleton */}
-            {loadingAll && !isFiltering && <SkeletonRows />}
-
-            {/* Search results */}
-            {!loadingAll && isFiltering && (
-              <>
-                {displayList.length > 0 && (
-                  <SectionLabel label={`Results for "${query}"`} count={displayList.length} />
-                )}
-                {displayList.map(user => (
-                  <UserRow key={user.id} user={user} query={query} onPreview={setPreviewUser} />
-                ))}
-                {displayList.length === 0 && !searching && (
-                  <div className='fp-empty'>
-                    <Search size={40} className='fp-empty-icon' />
-                    <p className='fp-empty-text'>No results for &ldquo;{query}&rdquo;</p>
-                    <p className='fp-empty-hint'>Try a different name or email</p>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Browse all */}
-            {!loadingAll && !isFiltering && (
-              <>
-                {allUsers.length === 0 && (
-                  <div className='fp-empty'>
-                    <Users size={40} className='fp-empty-icon' />
-                    <p className='fp-empty-text'>No other users yet</p>
-                    <p className='fp-empty-hint'>Invite friends to join!</p>
-                  </div>
-                )}
-
-                {onlineUsers.length > 0 && (
-                  <>
-                    <SectionLabel label='Online' count={onlineUsers.length} />
-                    {onlineUsers.map(user => (
-                      <UserRow key={user.id} user={user} query='' onPreview={setPreviewUser} />
-                    ))}
-                  </>
-                )}
-
-                {offlineUsers.length > 0 && (
-                  <>
-                    <SectionLabel label='People' count={offlineUsers.length} />
-                    {offlineUsers.map(user => (
-                      <UserRow key={user.id} user={user} query='' onPreview={setPreviewUser} />
-                    ))}
-                  </>
-                )}
-              </>
-            )}
-
-          </div>
+          <FindPeopleContent {...sharedProps} />
         </div>
       </div>
-
-      {/* ── Profile Preview Modal ── */}
-      {previewUser && (
-        <ProfilePreview
-          user={previewUser}
-          onClose={() => setPreviewUser(null)}
-          onStartChat={handleStartChat}
-          loading={startingChat}
-        />
-      )}
     </div>
   )
 }

@@ -2,12 +2,15 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useChatStore } from '../store/chatStore'
+import { useMobileNav } from '../hooks/useMobileNav'
 import { generateAvatar } from '../utils/generateAvatar'
 import * as userService from '../services/userService'
 import * as groupService from '../services/groupService'
 import Navbar from '../components/Navbar'
 import Sidebar from '../components/Sidebar'
+import MobilePageHeader from '../components/MobilePageHeader'
 import { ArrowLeft, Search, X, Camera, Users, Check, Sparkles, Hash } from 'lucide-react'
+import '../styles/mobile-page.css'
 
 // ── Debounce hook ─────────────────────────────────────────────────────────────
 function useDebounce(value, delay = 400) {
@@ -36,6 +39,31 @@ const STYLES = `
     padding: 28px 16px 48px;
     background: var(--color-surface-3);
     position: relative;
+  }
+
+  /* ── Mobile shell overrides ── */
+  .cg-mobile-shell {
+    display: flex; flex-direction: column;
+    height: 100dvh; overflow: hidden;
+    background-color: var(--color-bg);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+  .cg-mobile-content {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    display: flex; justify-content: center; align-items: flex-start;
+    padding-top: 16px; padding-left: 16px; padding-right: 16px;
+    background: var(--color-surface-3);
+    position: relative;
+  }
+  /* On mobile the card goes full-width with tighter padding */
+  .cg-mobile-content .cg-card {
+    max-width: 100%;
+    padding: 20px 16px 32px;
+    border-radius: 16px;
+    margin-bottom: 24px;
   }
 
   /* Orbs */
@@ -460,12 +488,284 @@ function Spinner() {
   )
 }
 
+// ── Shared card content ───────────────────────────────────────────────────────
+function CreateGroupCard({
+  groupName, setGroupName,
+  description, setDescription,
+  avatarPreview, avatarInputRef, handleAvatarChange,
+  searchQuery, setSearchQuery,
+  searchResults, setSearchResults,
+  searching,
+  selectedUsers, toggleUser, removeSelected,
+  creating, error,
+  activeStep, setActiveStep,
+  handleCreate,
+  canCreate, canCreateGroup,
+  initials, barWidth,
+  selectedSet,
+  // whether to show desktop back button inside card (hidden on mobile)
+  showCardBackBtn,
+  onBack,
+}) {
+  return (
+    <div className="cg-card">
+
+      {/* ── Header (hidden on mobile — header is in MobilePageHeader) ── */}
+      {showCardBackBtn && (
+        <div className="cg-header">
+          <button className="cg-back-btn" onClick={onBack} title="Back">
+            <ArrowLeft size={18} />
+          </button>
+          <div className="cg-header-text">
+            <h1 className="cg-title">
+              <Sparkles size={16} className="cg-title-icon" />
+              Create New Group
+            </h1>
+            <p className="cg-subtitle">Build your community</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step indicators ── */}
+      <div className="cg-steps">
+        <div
+          className={`cg-step ${activeStep >= 1 ? 'cg-step--active' : ''}`}
+          onClick={() => setActiveStep(1)}
+        >
+          <div className="cg-step-num">1</div>
+          <span className="cg-step-label">Group Info</span>
+        </div>
+        <div className="cg-step-line" />
+        <div
+          className={`cg-step ${activeStep >= 2 ? 'cg-step--active' : ''}`}
+          onClick={() => canCreate && setActiveStep(2)}
+        >
+          <div className="cg-step-num">2</div>
+          <span className="cg-step-label">Add Members</span>
+        </div>
+      </div>
+
+      {/* ══ STEP 1: Group Info ══ */}
+      {activeStep === 1 && (
+        <div className="cg-step-panel cg-fade-in">
+
+          <div className="cg-hero-zone">
+            <div
+              className="cg-avatar-ring"
+              onClick={() => avatarInputRef.current?.click()}
+              title="Change photo"
+            >
+              {avatarPreview
+                ? <img src={avatarPreview} alt="Group" className="cg-avatar-img" />
+                : <div className="cg-avatar-initials">{initials}</div>
+              }
+              <div className="cg-avatar-overlay">
+                <Camera size={22} />
+                <span>Change Photo</span>
+              </div>
+              <input
+                ref={avatarInputRef}
+                type="file" accept="image/*"
+                style={{ display: 'none' }}
+                onChange={handleAvatarChange}
+              />
+            </div>
+            <p className="cg-avatar-hint">Click to upload group photo</p>
+          </div>
+
+          <div className="cg-field-group">
+            <div className="cg-input-wrap">
+              <Hash size={15} className="cg-field-icon" />
+              <input
+                className="cg-input"
+                placeholder="Give your group a name…"
+                value={groupName}
+                onChange={e => setGroupName(e.target.value)}
+                maxLength={60}
+                autoFocus
+              />
+              <span className="cg-char-pill">{groupName.length}/60</span>
+            </div>
+            <div className="cg-input-bar" style={{ width: barWidth }} />
+          </div>
+
+          <div className="cg-field-group">
+            <label className="cg-floating-label">
+              Description
+              <span className="cg-optional-tag">optional</span>
+            </label>
+            <textarea
+              className="cg-textarea"
+              placeholder="What is this group about? Give members context…"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              maxLength={200}
+              rows={3}
+            />
+            <span className="cg-char-right">{description.length}/200</span>
+          </div>
+
+          <button
+            className="cg-next-btn"
+            onClick={() => canCreate && setActiveStep(2)}
+            disabled={!canCreate}
+          >
+            <span>Continue to Add Members</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </button>
+
+        </div>
+      )}
+
+      {/* ══ STEP 2: Add Members ══ */}
+      {activeStep === 2 && (
+        <div className="cg-step-panel cg-fade-in">
+
+          {/* Group preview banner */}
+          <div className="cg-group-preview">
+            {avatarPreview
+              ? <img src={avatarPreview} alt="Group" className="cg-preview-avatar" />
+              : <div className="cg-preview-initials">{initials}</div>
+            }
+            <div className="cg-preview-info">
+              <span className="cg-preview-name">{groupName}</span>
+              {description && <span className="cg-preview-desc">{description}</span>}
+            </div>
+            <div className="cg-member-badge">
+              <Users size={12} />
+              {selectedUsers.length + 1}
+            </div>
+          </div>
+
+          {/* Selected member chips */}
+          {selectedUsers.length > 0 && (
+            <div className="cg-chips-zone">
+              <span className="cg-chips-header">
+                <Users size={12} />
+                Selected ({selectedUsers.length})
+              </span>
+              <div className="cg-chips">
+                {selectedUsers.map(u => {
+                  const uid = u._id || u.id
+                  const src = u.avatar || generateAvatar(u.name || 'U')
+                  return (
+                    <div key={uid} className="cg-chip">
+                      <img src={src} alt={u.name} className="cg-chip-avatar" />
+                      <span className="cg-chip-name">{u.name?.split(' ')[0]}</span>
+                      <button className="cg-chip-x" onClick={() => removeSelected(uid)}>
+                        <X size={10} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Search input */}
+          <div className="cg-search-wrap">
+            <Search size={15} className="cg-search-icon" />
+            <input
+              className="cg-search-input"
+              placeholder="Search people by name or email…"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              autoComplete="off"
+              autoFocus
+            />
+            {searchQuery && (
+              <button className="cg-clear-btn" onClick={() => { setSearchQuery(''); setSearchResults([]) }}>
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Searching indicator */}
+          {searching && (
+            <div className="cg-searching-state">
+              <div className="cg-pulse-dots"><span /><span /><span /></div>
+              <span>Searching…</span>
+            </div>
+          )}
+
+          {/* No results */}
+          {!searching && searchQuery.trim() && searchResults.length === 0 && (
+            <div className="cg-empty-state">
+              <Search size={32} className="cg-empty-icon" />
+              <span>No users found for "<strong>{searchQuery}</strong>"</span>
+            </div>
+          )}
+
+          {/* Results list */}
+          {searchResults.length > 0 && (
+            <div className="cg-results-list">
+              {searchResults.map(u => (
+                <ResultRow
+                  key={u._id || u.id}
+                  user={u}
+                  selected={selectedSet.has(u._id || u.id)}
+                  onToggle={toggleUser}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Member count hint */}
+          <div className="cg-member-hint">
+            {selectedUsers.length === 0 && (
+              <span className="cg-member-hint--warn">Add at least 2 members to create a group</span>
+            )}
+            {selectedUsers.length === 1 && (
+              <span className="cg-member-hint--warn">Add 1 more member to continue</span>
+            )}
+            {selectedUsers.length >= 2 && (
+              <span className="cg-member-hint--ok">✓ {selectedUsers.length} members selected — ready to create</span>
+            )}
+          </div>
+
+          {/* Error message */}
+          {error && (
+            <div className="cg-error-banner">
+              <X size={14} />
+              {error}
+            </div>
+          )}
+
+          {/* Create button */}
+          <button
+            className="cg-create-btn"
+            onClick={handleCreate}
+            disabled={!canCreateGroup || creating}
+          >
+            {creating ? (
+              <><Spinner /><span>Launching your group…</span></>
+            ) : (
+              <>
+                <Users size={17} />
+                <span>
+                  Create Group & Invite {selectedUsers.length}
+                </span>
+                <div className="cg-btn-shine" />
+              </>
+            )}
+          </button>
+
+        </div>
+      )}
+
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function CreateGroup() {
   const navigate        = useNavigate()
   const { currentUser } = useAuth()
   const addRoom         = useChatStore(state => state.setRooms)
   const existingRooms   = useChatStore(state => state.rooms)
+  const { isMobile }    = useMobileNav()
 
   const [groupName,     setGroupName]     = useState('')
   const [description,   setDescription]   = useState('')
@@ -482,13 +782,11 @@ export default function CreateGroup() {
   const avatarInputRef = useRef(null)
   const debouncedQuery = useDebounce(searchQuery, 400)
 
-  // O(1) selected lookup
   const selectedSet = useMemo(
     () => new Set(selectedUsers.map(u => u._id || u.id)),
     [selectedUsers]
   )
 
-  // Search users
   useEffect(() => {
     const q = debouncedQuery.trim()
     if (!q) { setSearchResults([]); return }
@@ -563,13 +861,51 @@ export default function CreateGroup() {
     }
   }
 
-  const canCreate = groupName.trim().length > 0
+  const canCreate      = groupName.trim().length > 0
   const canCreateGroup = canCreate && selectedUsers.length >= 2
-  const initials  = useMemo(() =>
+  const initials       = useMemo(() =>
     groupName ? groupName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase() : 'GR'
   , [groupName])
   const barWidth = `${Math.min((groupName.length / 60) * 100, 100)}%`
 
+  const cardProps = {
+    groupName, setGroupName,
+    description, setDescription,
+    avatarPreview, avatarInputRef, handleAvatarChange,
+    searchQuery, setSearchQuery,
+    searchResults, setSearchResults,
+    searching,
+    selectedUsers, toggleUser, removeSelected,
+    creating, error,
+    activeStep, setActiveStep,
+    handleCreate,
+    canCreate, canCreateGroup,
+    initials, barWidth,
+    selectedSet,
+  }
+
+  // ── MOBILE: full-screen page ────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div className="cg-mobile-shell">
+        <MobilePageHeader
+          title={activeStep === 1 ? 'New Group' : 'Add Members'}
+          fallbackPath='/'
+        />
+        <div className="cg-mobile-content">
+          <div className="cg-bg-orb cg-bg-orb--1" aria-hidden="true" />
+          <div className="cg-bg-orb cg-bg-orb--2" aria-hidden="true" />
+          <CreateGroupCard
+            {...cardProps}
+            showCardBackBtn={false}
+            onBack={null}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // ── DESKTOP / TABLET: original layout unchanged ─────────────────────────────
   return (
     <div className="cg-shell">
       <Navbar />
@@ -581,252 +917,11 @@ export default function CreateGroup() {
           <div className="cg-bg-orb cg-bg-orb--2" aria-hidden="true" />
           <div className="cg-bg-orb cg-bg-orb--3" aria-hidden="true" />
 
-          <div className="cg-card">
-
-            {/* ── Header ── */}
-            <div className="cg-header">
-              <button className="cg-back-btn" onClick={() => navigate(-1)} title="Back">
-                <ArrowLeft size={18} />
-              </button>
-              <div className="cg-header-text">
-                <h1 className="cg-title">
-                  <Sparkles size={16} className="cg-title-icon" />
-                  Create New Group
-                </h1>
-                <p className="cg-subtitle">Build your community</p>
-              </div>
-            </div>
-
-            {/* ── Step indicators ── */}
-            <div className="cg-steps">
-              <div
-                className={`cg-step ${activeStep >= 1 ? 'cg-step--active' : ''}`}
-                onClick={() => setActiveStep(1)}
-              >
-                <div className="cg-step-num">1</div>
-                <span className="cg-step-label">Group Info</span>
-              </div>
-              <div className="cg-step-line" />
-              <div
-                className={`cg-step ${activeStep >= 2 ? 'cg-step--active' : ''}`}
-                onClick={() => canCreate && setActiveStep(2)}
-              >
-                <div className="cg-step-num">2</div>
-                <span className="cg-step-label">Add Members</span>
-              </div>
-            </div>
-
-            {/* ══ STEP 1: Group Info ══ */}
-            {activeStep === 1 && (
-              <div className="cg-step-panel cg-fade-in">
-
-                <div className="cg-hero-zone">
-                  <div
-                    className="cg-avatar-ring"
-                    onClick={() => avatarInputRef.current?.click()}
-                    title="Change photo"
-                  >
-                    {avatarPreview
-                      ? <img src={avatarPreview} alt="Group" className="cg-avatar-img" />
-                      : <div className="cg-avatar-initials">{initials}</div>
-                    }
-                    <div className="cg-avatar-overlay">
-                      <Camera size={22} />
-                      <span>Change Photo</span>
-                    </div>
-                    <input
-                      ref={avatarInputRef}
-                      type="file" accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={handleAvatarChange}
-                    />
-                  </div>
-                  <p className="cg-avatar-hint">Click to upload group photo</p>
-                </div>
-
-                <div className="cg-field-group">
-                  <div className="cg-input-wrap">
-                    <Hash size={15} className="cg-field-icon" />
-                    <input
-                      className="cg-input"
-                      placeholder="Give your group a name…"
-                      value={groupName}
-                      onChange={e => setGroupName(e.target.value)}
-                      maxLength={60}
-                      autoFocus
-                    />
-                    <span className="cg-char-pill">{groupName.length}/60</span>
-                  </div>
-                  <div className="cg-input-bar" style={{ width: barWidth }} />
-                </div>
-
-                <div className="cg-field-group">
-                  <label className="cg-floating-label">
-                    Description
-                    <span className="cg-optional-tag">optional</span>
-                  </label>
-                  <textarea
-                    className="cg-textarea"
-                    placeholder="What is this group about? Give members context…"
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                    maxLength={200}
-                    rows={3}
-                  />
-                  <span className="cg-char-right">{description.length}/200</span>
-                </div>
-
-                <button
-                  className="cg-next-btn"
-                  onClick={() => canCreate && setActiveStep(2)}
-                  disabled={!canCreate}
-                >
-                  <span>Continue to Add Members</span>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h14M12 5l7 7-7 7" />
-                  </svg>
-                </button>
-
-              </div>
-            )}
-
-            {/* ══ STEP 2: Add Members ══ */}
-            {activeStep === 2 && (
-              <div className="cg-step-panel cg-fade-in">
-
-                {/* Group preview banner */}
-                <div className="cg-group-preview">
-                  {avatarPreview
-                    ? <img src={avatarPreview} alt="Group" className="cg-preview-avatar" />
-                    : <div className="cg-preview-initials">{initials}</div>
-                  }
-                  <div className="cg-preview-info">
-                    <span className="cg-preview-name">{groupName}</span>
-                    {description && <span className="cg-preview-desc">{description}</span>}
-                  </div>
-                  <div className="cg-member-badge">
-                    <Users size={12} />
-                    {selectedUsers.length + 1}
-                  </div>
-                </div>
-
-                {/* Selected member chips */}
-                {selectedUsers.length > 0 && (
-                  <div className="cg-chips-zone">
-                    <span className="cg-chips-header">
-                      <Users size={12} />
-                      Selected ({selectedUsers.length})
-                    </span>
-                    <div className="cg-chips">
-                      {selectedUsers.map(u => {
-                        const uid = u._id || u.id
-                        const src = u.avatar || generateAvatar(u.name || 'U')
-                        return (
-                          <div key={uid} className="cg-chip">
-                            <img src={src} alt={u.name} className="cg-chip-avatar" />
-                            <span className="cg-chip-name">{u.name?.split(' ')[0]}</span>
-                            <button className="cg-chip-x" onClick={() => removeSelected(uid)}>
-                              <X size={10} />
-                            </button>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Search input */}
-                <div className="cg-search-wrap">
-                  <Search size={15} className="cg-search-icon" />
-                  <input
-                    className="cg-search-input"
-                    placeholder="Search people by name or email…"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    autoComplete="off"
-                    autoFocus
-                  />
-                  {searchQuery && (
-                    <button className="cg-clear-btn" onClick={() => { setSearchQuery(''); setSearchResults([]) }}>
-                      <X size={13} />
-                    </button>
-                  )}
-                </div>
-
-                {/* Searching indicator */}
-                {searching && (
-                  <div className="cg-searching-state">
-                    <div className="cg-pulse-dots"><span /><span /><span /></div>
-                    <span>Searching…</span>
-                  </div>
-                )}
-
-                {/* No results */}
-                {!searching && searchQuery.trim() && searchResults.length === 0 && (
-                  <div className="cg-empty-state">
-                    <Search size={32} className="cg-empty-icon" />
-                    <span>No users found for "<strong>{searchQuery}</strong>"</span>
-                  </div>
-                )}
-
-                {/* Results list */}
-                {searchResults.length > 0 && (
-                  <div className="cg-results-list">
-                    {searchResults.map(u => (
-                      <ResultRow
-                        key={u._id || u.id}
-                        user={u}
-                        selected={selectedSet.has(u._id || u.id)}
-                        onToggle={toggleUser}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {/* Member count hint */}
-                <div className="cg-member-hint">
-                  {selectedUsers.length === 0 && (
-                    <span className="cg-member-hint--warn">Add at least 2 members to create a group</span>
-                  )}
-                  {selectedUsers.length === 1 && (
-                    <span className="cg-member-hint--warn">Add 1 more member to continue</span>
-                  )}
-                  {selectedUsers.length >= 2 && (
-                    <span className="cg-member-hint--ok">✓ {selectedUsers.length} members selected — ready to create</span>
-                  )}
-                </div>
-
-                {/* Error message */}
-                {error && (
-                  <div className="cg-error-banner">
-                    <X size={14} />
-                    {error}
-                  </div>
-                )}
-
-                {/* Create button */}
-                <button
-                  className="cg-create-btn"
-                  onClick={handleCreate}
-                  disabled={!canCreateGroup || creating}
-                >
-                  {creating ? (
-                    <><Spinner /><span>Launching your group…</span></>
-                  ) : (
-                    <>
-                      <Users size={17} />
-                      <span>
-                        Create Group & Invite {selectedUsers.length}
-                      </span>
-                      <div className="cg-btn-shine" />
-                    </>
-                  )}
-                </button>
-
-              </div>
-            )}
-
-          </div>
+          <CreateGroupCard
+            {...cardProps}
+            showCardBackBtn={true}
+            onBack={() => navigate(-1)}
+          />
         </main>
       </div>
     </div>
