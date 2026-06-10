@@ -10,7 +10,7 @@ const formatDuration = (secs) => {
   return `${m}:${r}`
 }
 
-function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
+function VoiceMessageRecorder({ onSend, disabled = false, roomId = null, onStateChange }) {
   const [state,    setState]    = useState('idle')  // idle | recording | preview
   const [duration, setDuration] = useState(0)
   const [bars,     setBars]     = useState(Array(30).fill(3))
@@ -27,6 +27,11 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
   const audioCtxRef      = useRef(null)
   const durationRef      = useRef(0)
   const isStartingRef    = useRef(false)
+
+  const setStateAndNotify = (s) => {
+    setState(s)
+    onStateChange?.(s)
+  }
 
   useEffect(() => () => {
     stopAll()
@@ -107,7 +112,7 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
         setBlob(audioBlob)
         setAudioUrl(url)
         setDuration(durationRef.current)
-        setState('preview')
+        setStateAndNotify('preview')
         isStartingRef.current = false
       }
 
@@ -118,7 +123,7 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
       mediaRecorderRef.current = recorder
 
       durationRef.current = 0
-      setState('recording')
+      setStateAndNotify('recording')
       setDuration(0)
       setBars(Array(30).fill(3))
 
@@ -132,7 +137,7 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
     } catch (err) {
       console.error('Mic error:', err)
       isStartingRef.current = false
-      setState('idle')
+      setStateAndNotify('idle')
     }
   }, [disabled])
 
@@ -161,7 +166,7 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
     isStartingRef.current = false
     setDuration(0)
     setBars(Array(30).fill(3))
-    setState('idle')
+    setStateAndNotify('idle')
   }, [audioUrl])
 
   const sendVoice = useCallback(async () => {
@@ -218,12 +223,15 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
         <button className='vmr-cancel-btn' onClick={cancel} title='Cancel'>
           <TrashIcon />
         </button>
-        <div className='vmr-waveform'>
-          {bars.map((h, i) => (
-            <span key={i} className='vmr-waveform-bar' style={{ height: h }} />
-          ))}
+        <div className='vmr-content'>
+          <span className='vmr-rec-dot' />
+          <span className='vmr-timer'>{formatDuration(duration)}</span>
+          <div className='vmr-waveform'>
+            {bars.map((h, i) => (
+              <span key={i} className='vmr-waveform-bar' style={{ height: h }} />
+            ))}
+          </div>
         </div>
-        <span className='vmr-timer'>{formatDuration(duration)}</span>
         <button className='vmr-stop-btn' onClick={stopRecording} title='Stop recording'>
           <StopIcon />
         </button>
@@ -233,11 +241,13 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
 
   if (state === 'preview') {
     return (
-      <div className='vmr-bar vmr-bar--preview'>
+      <div className='vmr-bar vmr-bar--preview' style={{ position: 'relative' }}>
         <button className='vmr-cancel-btn' onClick={cancel} title='Discard'>
           <TrashIcon />
         </button>
-        <AudioPlayer src={audioUrl} totalDuration={duration} />
+        <div className='vmr-content'>
+          <AudioPlayer src={audioUrl} totalDuration={duration} />
+        </div>
         <button
           className='vmr-send-btn'
           onClick={sendVoice}
@@ -247,9 +257,7 @@ function VoiceMessageRecorder({ onSend, disabled = false, roomId = null }) {
           {sending ? <SpinnerIcon /> : <SendIcon />}
         </button>
         {error && (
-          <span style={{ fontSize: 11, color: 'var(--color-error, #e74c3c)', position: 'absolute', bottom: 2, left: 56 }}>
-            {error}
-          </span>
+          <span className='vmr-error'>{error}</span>
         )}
       </div>
     )

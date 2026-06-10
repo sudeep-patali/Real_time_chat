@@ -1,34 +1,31 @@
 /* ══════════════════════════════════════════
-   Voice Message Recorder
+   Voice Message Recorder — WhatsApp-style
 ══════════════════════════════════════════ */
 
 /* ── Idle mic button ── */
 .vmr-mic-btn {
-  width: 38px;
-  height: 38px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: none;
+  background: var(--color-primary);
   border: none;
-  color: var(--color-text-muted);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: color var(--transition-fast), background var(--transition-fast), transform 0.1s;
+  transition: background var(--transition-fast), transform 0.1s;
   touch-action: none;
   user-select: none;
 }
 
 .vmr-mic-btn:hover {
-  color: var(--color-primary);
-  background: var(--color-primary-light);
+  background: var(--color-primary-hover, #1da851);
 }
 
 .vmr-mic-btn:active {
-  transform: scale(0.9);
-  color: var(--color-primary);
-  background: var(--color-primary-light);
+  transform: scale(0.92);
 }
 
 .vmr-mic-btn--disabled {
@@ -37,39 +34,33 @@
   pointer-events: none;
 }
 
-/* ── Expanded bar (recording & preview) ── */
+/* ── Expanded bar — fills the whole input-bar slot ── */
 .vmr-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: var(--color-surface);
-  border-top: 1px solid var(--color-border);
-  flex-shrink: 0;
+  gap: 8px;
+  padding: 8px 4px 10px;
+  background: var(--color-header-bg, #f0f2f5);
+  flex: 1;
+  min-width: 0;
   animation: vmr-slide-up 0.18s ease;
+  /* Negate the input-bar's own padding so bar fills edge-to-edge */
+  margin: -8px -16px -10px;
 }
 
 @keyframes vmr-slide-up {
-  from { transform: translateY(8px); opacity: 0; }
+  from { transform: translateY(6px); opacity: 0; }
   to   { transform: translateY(0);   opacity: 1; }
-}
-
-.vmr-bar--recording {
-  background: var(--color-surface);
-}
-
-.vmr-bar--preview {
-  background: var(--color-surface);
 }
 
 /* ── Cancel (trash) button ── */
 .vmr-cancel-btn {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: none;
   border: none;
-  color: var(--color-error);
+  color: var(--color-error, #e53935);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -82,22 +73,37 @@
   background: rgba(229, 57, 53, 0.1);
 }
 
+/* ── Inner content area (waveform + timer, or audio player) ── */
+.vmr-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  background: var(--color-input-bg, #fff);
+  border-radius: 24px;
+  padding: 6px 14px;
+  height: 42px;
+  overflow: hidden;
+}
+
 /* ── Live waveform ── */
 .vmr-waveform {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 32px;
+  height: 28px;
   overflow: hidden;
+  min-width: 0;
 }
 
 .vmr-waveform-bar {
   display: inline-block;
   width: 3px;
   min-height: 3px;
-  max-height: 32px;
-  background: var(--color-primary);
+  max-height: 26px;
+  background: var(--color-primary, #25d366);
   border-radius: 2px;
   transition: height 0.08s ease;
   flex-shrink: 0;
@@ -107,29 +113,44 @@
 .vmr-timer {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  color: var(--color-text-muted);
+  color: var(--color-error, #e53935);
   flex-shrink: 0;
-  min-width: 36px;
+  min-width: 38px;
   text-align: right;
+  animation: vmr-pulse-text 1.2s ease-in-out infinite;
 }
 
-/* Recording: timer is red/pulsing */
-.vmr-bar--recording .vmr-timer {
-  color: var(--color-error);
-  animation: vmr-pulse-text 1.2s ease-in-out infinite;
+.vmr-bar--preview .vmr-timer {
+  color: var(--color-text-muted);
+  animation: none;
 }
 
 @keyframes vmr-pulse-text {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.5; }
+  50%       { opacity: 0.45; }
+}
+
+/* ── Recording dot indicator ── */
+.vmr-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-error, #e53935);
+  flex-shrink: 0;
+  animation: vmr-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes vmr-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
 }
 
 /* ── Stop button ── */
 .vmr-stop-btn {
-  width: 36px;
-  height: 36px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: var(--color-primary);
+  background: var(--color-primary, #25d366);
   border: none;
   color: #fff;
   display: flex;
@@ -140,28 +161,15 @@
   transition: background var(--transition-fast), transform 0.1s;
 }
 
-.vmr-stop-btn:hover  { background: var(--color-primary-hover); }
+.vmr-stop-btn:hover  { background: var(--color-primary-hover, #1da851); }
 .vmr-stop-btn:active { transform: scale(0.92); }
-
-/* ── Preview audio element ── */
-.vmr-audio-preview {
-  flex: 1;
-  height: 32px;
-  min-width: 0;
-  accent-color: var(--color-primary);
-}
-
-/* Custom audio player look in Chromium */
-.vmr-audio-preview::-webkit-media-controls-panel {
-  background: var(--color-input-bg);
-}
 
 /* ── Send button ── */
 .vmr-send-btn {
-  width: 38px;
-  height: 38px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: var(--color-primary);
+  background: var(--color-primary, #25d366);
   border: none;
   color: #fff;
   display: flex;
@@ -172,15 +180,11 @@
   transition: background var(--transition-fast), transform 0.1s;
 }
 
-.vmr-send-btn:hover         { background: var(--color-primary-hover); }
+.vmr-send-btn:hover         { background: var(--color-primary-hover, #1da851); }
 .vmr-send-btn:active        { transform: scale(0.92); }
 .vmr-send-btn:disabled      { opacity: 0.6; cursor: not-allowed; }
 
-@keyframes vmr-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-/* ── Custom audio player (preview) ── */
+/* ── Custom audio player inside preview ── */
 .vmr-player {
   flex: 1;
   display: flex;
@@ -190,10 +194,10 @@
 }
 
 .vmr-play-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  background: var(--color-primary);
+  background: var(--color-primary, #25d366);
   border: none;
   color: #fff;
   display: flex;
@@ -203,14 +207,14 @@
   flex-shrink: 0;
   transition: background var(--transition-fast), transform 0.1s;
 }
-.vmr-play-btn:hover  { background: var(--color-primary-hover); }
+.vmr-play-btn:hover  { background: var(--color-primary-hover, #1da851); }
 .vmr-play-btn:active { transform: scale(0.92); }
 
 .vmr-scrubber {
   flex: 1;
   min-width: 0;
   height: 4px;
-  accent-color: var(--color-primary);
+  accent-color: var(--color-primary, #25d366);
   cursor: pointer;
 }
 
@@ -221,4 +225,19 @@
   flex-shrink: 0;
   min-width: 36px;
   text-align: right;
+}
+
+@keyframes vmr-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Error text ── */
+.vmr-error {
+  font-size: 11px;
+  color: var(--color-error, #e53935);
+  position: absolute;
+  bottom: 2px;
+  left: 60px;
+  white-space: nowrap;
 }

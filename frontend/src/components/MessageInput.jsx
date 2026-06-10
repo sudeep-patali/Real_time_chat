@@ -121,6 +121,7 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
   }
 
   const showMic = !text.trim() && !disabled
+  const [vmrActive, setVmrActive] = useState(false)
 
   const replyPreviewText = (() => {
     if (!replyTo) return ''
@@ -178,10 +179,12 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
         </div>
       )}
 
+      {/* ── Voice recorder replaces input-bar when active ── */}
       <div
         className='input-bar'
         style={disabled ? { opacity: 0.5, pointerEvents: 'none', userSelect: 'none' } : {}}
       >
+        {vmrActive ? null : (
         <div className='attach-wrap' ref={attachBtnRef}>
           <button
             className='attach-btn'
@@ -211,7 +214,9 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
             </div>
           )}
         </div>
+        )}
 
+        {vmrActive ? null : (
         <div className='input-pill'>
           <button
             className={`emoji-btn${showEmoji ? ' active' : ''}`}
@@ -238,9 +243,15 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
             readOnly={disabled}
           />
         </div>
+        )}
 
         {showMic ? (
-          <VoiceMessageRecorder onSend={onSend} disabled={disabled} roomId={roomId} />
+          <VoiceMessageRecorder
+            onSend={onSend}
+            disabled={disabled}
+            roomId={roomId}
+            onStateChange={(s) => setVmrActive(s !== 'idle')}
+          />
         ) : (
           <button
             className='send-btn'
