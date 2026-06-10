@@ -16,6 +16,10 @@ const messageSchema = new mongoose.Schema({
   fileName:     { type: String, default: null },
   mimeType:     { type: String, default: null },
   fileDuration: { type: Number, default: null },
+  // ── Upload source: determines Media vs Documents categorisation ───────────
+  // 'media'    → uploaded via Images & Videos picker → shown as media preview
+  // 'document' → uploaded via Documents picker       → shown as document card
+  uploadSource: { type: String, enum: ['media', 'document', null], default: null },
 
   // ── E2E Encryption fields (AES-256-GCM) ──────────────────────────────────
   // All values are Base64-encoded.

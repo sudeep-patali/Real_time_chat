@@ -69,7 +69,7 @@ exports.getHistory = async (req, res, next) => {
 
 exports.sendMessage = async (req, res, next) => {
   try {
-    const { content, roomId, type = 'text', fileUrl } = req.body
+    const { content, roomId, type = 'text', fileUrl, uploadSource } = req.body
     const room = await Room.findById(roomId).select('participantIds isGroup')
     if (room && !room.isGroup) {
       const otherId = room.participantIds.find(p => p.toString() !== req.user._id.toString())
@@ -80,6 +80,7 @@ exports.sendMessage = async (req, res, next) => {
     }
     const message = await Message.create({
       content, roomId, type, fileUrl,
+      uploadSource: uploadSource || null,
       senderId: req.user._id,
       sentAt:   new Date(),
       readBy:   [req.user._id]

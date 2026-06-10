@@ -82,7 +82,7 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
     clearTimeout(typingTimer.current)
     emitTypingStop()
     const replyContext = replyTo
-      ? { id: replyTo.id, content: replyTo.content, senderName: replyTo.senderName, type: replyTo.type || 'text', senderId: replyTo.senderId || null }
+      ? { id: replyTo.id, content: replyTo.content, senderName: replyTo.senderName, type: replyTo.type || 'text', senderId: replyTo.senderId || null, uploadSource: replyTo.uploadSource || null }
       : null
     onSend(text.trim(), 'text', null, null, null, null, replyContext)
     setText('')
@@ -95,13 +95,13 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
     if (e.key === 'Escape' && replyTo) onCancelReply?.()
   }
 
-  const handleUploadComplete = ({ url, mediaType, fileName, mimeType }) => {
+  const handleUploadComplete = ({ url, mediaType, fileName, mimeType, uploadSource }) => {
     if (disabled) return
     const msgType = mediaType === 'gif'   ? 'gif'
                   : mediaType === 'image' ? 'image'
                   : mediaType === 'video' ? 'video'
                   : 'file'
-    onSend(url, msgType, url, fileName, mimeType)
+    onSend(url, msgType, url, fileName, mimeType, null, null, uploadSource)
     setShowUpload(false)
   }
 
@@ -125,11 +125,11 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
   const replyPreviewText = (() => {
     if (!replyTo) return ''
     const t = replyTo.type || 'text'
-    if (t === 'audio')                    return '🎤 Voice message'
-    if (t === 'image')                    return '📷 Photo'
-    if (t === 'video')                    return '📹 Video'
-    if (t === 'gif')                      return '🎞 GIF'
-    if (t === 'file' || t === 'document') return '📎 File'
+    const isDocSrc = replyTo.uploadSource === 'document'
+    if (t === 'audio')                                       return '🎤 Voice message'
+    if ((t === 'image' || t === 'gif') && !isDocSrc)         return '📷 Photo'
+    if (t === 'video' && !isDocSrc)                          return '📹 Video'
+    if (t === 'file' || t === 'document' || isDocSrc)        return '📎 File'
     const c = replyTo.content || ''
     if (/^https?:\/\/.+\.(webm|ogg|mp3|m4a|wav|opus)(\?.*)?$/i.test(c)) return '🎤 Voice message'
     if (/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?.*)?$/i.test(c)) return '📷 Photo'

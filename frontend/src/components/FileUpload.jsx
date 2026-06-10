@@ -8,7 +8,14 @@ const LIMITS = { image: 10, video: 4, document: 5, gif: 10 }
 const formatBytes = (b) =>
   b < 1024 ? `${b} B` : b < 1048576 ? `${(b/1024).toFixed(1)} KB` : `${(b/1048576).toFixed(1)} MB`
 
-const getMediaType = (file) => MEDIA_TYPE_MAP[file.type] || 'document'
+// Raw mime-type lookup (ignores upload source — only used for thumbnail display)
+const getRawMediaType = (file) => MEDIA_TYPE_MAP[file.type] || 'document'
+
+// Effective media type for the file item — document mode always yields 'document'
+const getEffectiveMediaType = (file, mode) => {
+  if (mode === 'document') return 'document'
+  return getRawMediaType(file)
+}
 
 const TypeIcon = ({ type, size = 20 }) => {
   if (type === 'image') return <ImageIcon size={size} />
@@ -20,24 +27,23 @@ const TypeIcon = ({ type, size = 20 }) => {
 let _uid = 0
 const uid = () => `f${++_uid}`
 
-export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
-  // mode: 'media' = images+videos only, 'document' = docs only, null = all
+export default function FileUpload({ onUploadComplete, onClose, mode = null, roomId = null }) {
+  // mode: 'media' = images+videos only, 'document' = all files treated as docs, null = all
+  // Document mode accepts images and videos too — they are stored as document cards
   const acceptStr = mode === 'media'
     ? 'image/*,video/mp4,video/webm,video/quicktime'
     : mode === 'document'
-    ? 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain'
+    ? 'image/*,video/mp4,video/webm,video/quicktime,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain'
     : 'image/*,video/mp4,video/webm,video/quicktime,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain'
 
   const modeLabel = mode === 'media' ? 'Images & Videos' : mode === 'document' ? 'Documents' : 'Files'
   const inputRef = useRef(null)
-  // Use a ref for items so handleSend always reads latest state
   const itemsRef             = useRef([])
   const [items, _setItems]   = useState([])
   const [sending, setSending] = useState(false)
   const [errors,  setErrors]  = useState([])
   const [dragging, setDragging] = useState(false)
 
-  // Always update both ref and state together
   const setItems = useCallback((updater) => {
     _setItems(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater
@@ -54,7 +60,10 @@ export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
     const toAdd    = []
 
     for (const file of incoming) {
-      if (!SUPPORTED_FILE_TYPES.includes(file.type)) {
+      // In document mode, allow images and videos too (treated as documents)
+      const isAllowedType = SUPPORTED_FILE_TYPES.includes(file.type) ||
+        (mode === 'document' && (file.type.startsWith('image/') || file.type.startsWith('video/')))
+      if (!isAllowedType) {
         rejected.push(`"${file.name}" — unsupported type`); continue
       }
       if (file.size > MAX_FILE_SIZE) {
@@ -68,14 +77,12 @@ export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
       const counts = {}
       for (const it of next) counts[it.mediaType] = (counts[it.mediaType] || 0) + 1
 
-      // Count incoming files by type BEFORE adding anything
       const incomingCounts = {}
       for (const file of toAdd) {
-        const mt = getMediaType(file)
+        const mt = getEffectiveMediaType(file, mode)
         incomingCounts[mt] = (incomingCounts[mt] || 0) + 1
       }
 
-      // Check if any type would exceed its limit — if so, block entire batch for that type
       const blockedTypes = {}
       for (const [mt, inCount] of Object.entries(incomingCounts)) {
         const limit   = LIMITS[mt] ?? 5
@@ -100,20 +107,31 @@ export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
           }
         }
         setErrors(msgs)
-        return prev  // Return unchanged — do NOT add any files
+        return prev
       }
 
-      // All within limits — add everything
       for (const file of toAdd) {
-        const mediaType = getMediaType(file)
-        const effectiveType = mode === 'document' ? 'document' : mediaType
-        next.push({ id: uid(), file, mediaType: effectiveType, status: 'pending', progress: 0, url: null, fileName: file.name, mimeType: file.type, error: null })
+        const effectiveType = getEffectiveMediaType(file, mode)
+        const rawType       = getRawMediaType(file)  // for thumbnail only
+        next.push({
+          id:           uid(),
+          file,
+          mediaType:    effectiveType,   // logical type (drives message type + bucket)
+          rawMediaType: rawType,          // only used for thumbnail preview in the upload UI
+          uploadSource: mode === 'document' ? 'document' : mode === 'media' ? 'media' : null,
+          status:       'pending',
+          progress:     0,
+          url:          null,
+          fileName:     file.name,
+          mimeType:     file.type,
+          error:        null,
+        })
       }
 
       if (rejected.length) setErrors(rejected)
       return next
     })
-  }, [setItems])
+  }, [setItems, mode])
 
   const removeItem = (id) => setItems(prev => prev.filter(it => it.id !== id))
 
@@ -123,16 +141,15 @@ export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
     try {
       const res = await uploadFile(item.file, (p) => {
         setItems(prev => prev.map(it => it.id === item.id ? { ...it, progress: p } : it))
-      })
-      const { url, mediaType: mType, fileName: fName, mimeType: mime } = res.data
+      }, item.uploadSource, roomId)
+      const { url, fileName: fName, mimeType: mime } = res.data
       const updated = {
         ...item,
-        status:    'done',
+        status:   'done',
         url,
-        mediaType: mType || item.mediaType,
-        fileName:  fName || item.fileName,
-        mimeType:  mime  || item.mimeType,
-        progress:  100,
+        fileName: fName || item.fileName,
+        mimeType: mime  || item.mimeType,
+        progress: 100,
       }
       setItems(prev => prev.map(it => it.id === item.id ? updated : it))
       return updated
@@ -140,7 +157,7 @@ export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
       setItems(prev => prev.map(it => it.id === item.id ? { ...it, status: 'error', error: 'Upload failed' } : it))
       return null
     }
-  }, [setItems])
+  }, [setItems, roomId])
 
   // ── Send: upload pending → send all done ─────────────────────────────
   const handleSend = useCallback(async () => {
@@ -150,18 +167,29 @@ export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
       const pending = current.filter(it => it.status === 'pending')
       const already = current.filter(it => it.status === 'done')
 
-      // Upload pending ones first (in parallel)
       const freshlyUploaded = await Promise.all(pending.map(uploadOne))
       const newDone = freshlyUploaded.filter(Boolean)
 
-      // Send all done items
       const allToSend = [...already, ...newDone]
       for (const it of allToSend) {
-        const msgType = it.mediaType === 'gif'   ? 'gif'
-                      : it.mediaType === 'image' ? 'image'
-                      : it.mediaType === 'video' ? 'video'
-                      : 'file'
-        onUploadComplete?.({ url: it.url, mediaType: msgType, fileName: it.fileName, mimeType: it.mimeType })
+        // msgType: what gets stored in message.type in DB
+        // Document-source files always use 'file' type so they render as document cards
+        let msgType
+        if (it.uploadSource === 'document') {
+          msgType = 'file'
+        } else {
+          msgType = it.mediaType === 'gif'   ? 'gif'
+                  : it.mediaType === 'image' ? 'image'
+                  : it.mediaType === 'video' ? 'video'
+                  : 'file'
+        }
+        onUploadComplete?.({
+          url:          it.url,
+          mediaType:    msgType,
+          fileName:     it.fileName,
+          mimeType:     it.mimeType,
+          uploadSource: it.uploadSource,
+        })
       }
 
       onClose?.()
@@ -207,7 +235,7 @@ export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
           <p className="fu-drop-text">{items.length === 0 ? 'Drag & drop or click to browse' : 'Click to add more files'}</p>
           <p className="fu-drop-hint">
             {mode === 'media'    ? 'Images (max 10) · Videos (max 4) · max 50 MB each' :
-             mode === 'document' ? 'PDF · Word · Excel · Text · max 50 MB each' :
+             mode === 'document' ? 'Any file type including images & videos · max 50 MB each · shown as document card' :
              'Images (10) · Videos (4) · Documents (5) · max 50 MB each'}
           </p>
           <input
@@ -237,9 +265,10 @@ export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
               <div key={item.id} className={`fu-file-row fu-file-row--${item.status}`}>
 
                 <div className="fu-file-thumb">
-                  {(item.mediaType === 'image' || item.mediaType === 'gif') ? (
+                  {/* Show image/video thumbnails in the picker UI regardless of upload source */}
+                  {(item.rawMediaType === 'image' || item.rawMediaType === 'gif') ? (
                     <img src={URL.createObjectURL(item.file)} alt="" className="fu-thumb-img" />
-                  ) : item.mediaType === 'video' ? (
+                  ) : item.rawMediaType === 'video' ? (
                     <video src={URL.createObjectURL(item.file)} className="fu-thumb-img" />
                   ) : (
                     <div className="fu-thumb-icon"><TypeIcon type={item.mediaType} size={20} /></div>
@@ -250,7 +279,11 @@ export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
                   <p className="fu-file-name">{item.fileName}</p>
                   <p className="fu-file-meta">
                     {formatBytes(item.file.size)}
+                    {/* Badge shows effective type; document-sourced images/videos show as 'document' */}
                     <span className="fu-type-badge">{item.mediaType}</span>
+                    {item.uploadSource === 'document' && (item.rawMediaType === 'image' || item.rawMediaType === 'video') && (
+                      <span className="fu-type-badge" style={{ background: 'var(--color-surface-3)', color: 'var(--color-text-muted)' }}>via docs</span>
+                    )}
                     {item.status === 'pending'   && <span className="fu-status-label fu-status-label--pending">Pending</span>}
                     {item.status === 'uploading' && <span className="fu-status-label fu-status-label--uploading">Uploading {item.progress}%</span>}
                     {item.status === 'done'      && <span className="fu-status-label fu-status-label--done">Ready</span>}

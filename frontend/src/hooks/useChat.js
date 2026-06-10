@@ -42,6 +42,7 @@ function normalizeMessage(msg) {
     fileName:       msg.fileName     || null,
     mimeType:       msg.mimeType     || null,
     fileDuration:   msg.fileDuration || null,
+    uploadSource:   msg.uploadSource || null,
     isEdited:       msg.isEdited     || false,
     editedAt:       msg.editedAt     || null,
     isDeleted:      msg.isDeleted    || false,
@@ -302,9 +303,9 @@ export function useChat(roomId) {
    * Send a message. If the room has an E2E key available, the message is
    * encrypted before being sent; otherwise it falls back to plaintext.
    */
-  const sendMessage = async (content, type = 'text', fileUrl = null, fileName = null, mimeType = null, fileDuration = null, replyContext = null) => {
+  const sendMessage = async (content, type = 'text', fileUrl = null, fileName = null, mimeType = null, fileDuration = null, replyContext = null, uploadSource = null) => {
     const tempId    = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    let   payload   = { content, roomId, type, fileUrl, fileName, mimeType, fileDuration, tempId, replyTo: replyContext }
+    let   payload   = { content, roomId, type, fileUrl, fileName, mimeType, fileDuration, tempId, replyTo: replyContext, uploadSource }
 
     // Attempt E2E encryption for text messages
     if (type === 'text') {
@@ -333,6 +334,7 @@ export function useChat(roomId) {
       fileName,
       mimeType,
       fileDuration,
+      uploadSource,
       status:      'sent',
       encrypted:   payload.encrypted || false,
       replyTo:     replyContext,

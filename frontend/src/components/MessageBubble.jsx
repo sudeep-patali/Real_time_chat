@@ -324,7 +324,11 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
   }
 
   const renderContent = () => {
-    if (message.type === 'image') {
+    // WhatsApp-style rule: if the file was sent via the Documents picker,
+    // always render as a document card — never as an image/video preview.
+    const isDocumentSourced = message.uploadSource === 'document'
+
+    if (message.type === 'image' && !isDocumentSourced) {
       return (
         <img
           src={message.fileUrl}
@@ -336,7 +340,7 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
       )
     }
 
-    if (message.type === 'gif') {
+    if (message.type === 'gif' && !isDocumentSourced) {
       return (
         <div style={{ position: 'relative', display: 'inline-block' }}>
           <img
@@ -351,7 +355,7 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
       )
     }
 
-    if (message.type === 'video') {
+    if (message.type === 'video' && !isDocumentSourced) {
       return (
         <video
           src={message.fileUrl}
@@ -370,7 +374,10 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
       )
     }
 
-    if (message.type === 'file' || message.type === 'document') {
+    // Render as document card:
+    //   - explicit file/document type
+    //   - any file that was uploaded via the Documents picker (image/video via docs)
+    if (message.type === 'file' || message.type === 'document' || isDocumentSourced) {
       const name = message.fileName || message.content || 'Download file'
       const ext  = name.split('.').pop()?.toLowerCase()
       return (
@@ -442,11 +449,12 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
             const replyName  = replyIsOwn ? 'You' : (rt.senderName || 'User')
             const replyText  = (() => {
               const t = rt.type || 'text'
+              const isDocSrc = rt.uploadSource === 'document'
               if (t === 'audio')    return '🎤 Voice message'
-              if (t === 'image')    return '📷 Photo'
-              if (t === 'video')    return '📹 Video'
-              if (t === 'gif')      return '🎞 GIF'
-              if (t === 'file' || t === 'document') return '📎 File'
+              // Document-sourced images/videos show as file, not photo/video
+              if ((t === 'image' || t === 'gif') && !isDocSrc) return '📷 Photo'
+              if (t === 'video' && !isDocSrc)    return '📹 Video'
+              if (t === 'file' || t === 'document' || isDocSrc) return '📎 File'
               const c = rt.content || ''
               // Fallback: sniff content for file URLs (old messages saved before type was included)
               if (/^https?:\/\/.+\.(webm|ogg|mp3|m4a|wav|opus)(\?.*)?$/i.test(c)) return '🎤 Voice message'

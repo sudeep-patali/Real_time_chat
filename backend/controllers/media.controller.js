@@ -20,7 +20,7 @@ exports.uploadFile = async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' })
 
-    const { roomId } = req.body
+    const { roomId, uploadSource } = req.body
     if (roomId) {
       const room = await Room.findById(roomId).select('participantIds isGroup')
       if (room && !room.isGroup) {
@@ -32,13 +32,26 @@ exports.uploadFile = async (req, res, next) => {
       }
     }
 
-    const mediaType = ALLOWED_MIME[req.file.mimetype] || 'document'
-    const url       = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
-    const fileName  = req.file.originalname
-    const fileSize  = req.file.size
-    const mimeType  = req.file.mimetype
+    // uploadSource ('media' | 'document') determines the logical category, not the file's mime type.
+    // If the file was sent via the Documents picker, it is always treated as a document regardless
+    // of whether it is an image or video.
+    const rawMimeType = ALLOWED_MIME[req.file.mimetype] || 'document'
+    let mediaType
+    if (uploadSource === 'document') {
+      mediaType = 'document'
+    } else if (uploadSource === 'media') {
+      // Only genuine image/video/gif mimetypes are allowed as media
+      mediaType = ['image', 'video', 'gif'].includes(rawMimeType) ? rawMimeType : 'document'
+    } else {
+      mediaType = rawMimeType
+    }
 
-    res.json({ url, mediaType, fileName, fileSize, mimeType })
+    const url      = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
+    const fileName = req.file.originalname
+    const fileSize = req.file.size
+    const mimeType = req.file.mimetype
+
+    res.json({ url, mediaType, fileName, fileSize, mimeType, uploadSource: uploadSource || null })
   } catch (err) { next(err) }
 }
 
@@ -48,17 +61,32 @@ exports.getRoomMedia = async (req, res, next) => {
     const { roomId } = req.params
     const messages = await Message.find({
       roomId,
-      type:      { $in: ['image', 'video', 'file', 'document', 'audio'] },
+      type:      { $in: ['image', 'video', 'gif', 'file', 'document', 'audio'] },
       isDeleted: { $ne: true },
       fileUrl:   { $ne: null }
     })
     .sort({ createdAt: -1 })
-    .select('type fileUrl content createdAt senderId fileName mimeType')
+    .select('type fileUrl content createdAt senderId fileName mimeType fileSize uploadSource')
     .populate('senderId', 'name')
     .lean()
 
-    const media     = messages.filter(m => m.type === 'image' || m.type === 'video')
-    const documents = messages.filter(m => m.type === 'file' || m.type === 'document')
+    // WhatsApp-style split: the upload SOURCE determines the bucket, not the file type.
+    //   uploadSource === 'document' → always goes to Documents tab
+    //   uploadSource === 'media'    → always goes to Media tab
+    //   uploadSource === null       → legacy fallback: use type
+    const media = messages.filter(m => {
+      if (m.uploadSource === 'document') return false
+      if (m.uploadSource === 'media')    return true
+      // Legacy messages without uploadSource: image/video/gif = media
+      return m.type === 'image' || m.type === 'video' || m.type === 'gif'
+    })
+
+    const documents = messages.filter(m => {
+      if (m.uploadSource === 'document') return true
+      if (m.uploadSource === 'media')    return false
+      // Legacy messages without uploadSource: file/document = docs
+      return m.type === 'file' || m.type === 'document'
+    })
 
     res.json({ media, documents })
   } catch (err) { next(err) }
