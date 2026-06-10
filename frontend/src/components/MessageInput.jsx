@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Paperclip, Smile, Mic, Send, X } from 'lucide-react'
+import { Paperclip, Smile, Mic, Send, X, ImageIcon, FileText } from 'lucide-react'
 import { useSocket } from '../hooks/useSocket'
 import { useAuth }   from '../hooks/useAuth'
 import { TYPING_START, TYPING_STOP, GROUP_TYPING_START, GROUP_TYPING_STOP } from '../socket/socketEvents'
@@ -11,6 +11,9 @@ import '../styles/chat.css'
 function MessageInput({ onSend, roomId, disabled = false, isGroup = false, replyTo = null, onCancelReply }) {
   const [text,       setText]       = useState('')
   const [showUpload, setShowUpload] = useState(false)
+  const [uploadMode, setUploadMode]   = useState(null)   // null | 'media' | 'document'
+  const [showUploadPicker, setShowUploadPicker] = useState(false)
+  const attachBtnRef = useRef(null)
   const [showEmoji,  setShowEmoji]  = useState(false)
   const { emit }                    = useSocket()
   const { currentUser }             = useAuth()
@@ -35,6 +38,18 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showEmoji])
+
+  // Close upload picker when clicking outside
+  useEffect(() => {
+    if (!showUploadPicker) return
+    const handler = (e) => {
+      if (attachBtnRef.current && !attachBtnRef.current.contains(e.target)) {
+        setShowUploadPicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showUploadPicker])
 
   const emitTypingStart = () => {
     if (isTypingRef.current) return
@@ -134,8 +149,9 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
       {showUpload && !disabled && (
         <FileUpload
           onUploadComplete={handleUploadComplete}
-          onClose={() => setShowUpload(false)}
+          onClose={() => { setShowUpload(false); setUploadMode(null) }}
           roomId={roomId}
+          mode={uploadMode}
         />
       )}
 
@@ -166,14 +182,35 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
         className='input-bar'
         style={disabled ? { opacity: 0.5, pointerEvents: 'none', userSelect: 'none' } : {}}
       >
-        <button
-          className='attach-btn'
-          title={disabled ? 'Messaging disabled' : 'Attach file'}
-          onClick={() => !disabled && setShowUpload(prev => !prev)}
-          disabled={disabled}
-        >
-          <Paperclip size={20} />
-        </button>
+        <div className='attach-wrap' ref={attachBtnRef}>
+          <button
+            className='attach-btn'
+            title={disabled ? 'Messaging disabled' : 'Attach file'}
+            onClick={() => !disabled && setShowUploadPicker(prev => !prev)}
+            disabled={disabled}
+          >
+            <Paperclip size={20} />
+          </button>
+          {showUploadPicker && !disabled && (
+            <div className='attach-picker'>
+              <button
+                className='attach-picker-item'
+                onClick={() => { setUploadMode('media'); setShowUpload(true); setShowUploadPicker(false) }}
+              >
+                <ImageIcon size={16} />
+                <span>Images &amp; Videos</span>
+              </button>
+              <div className='attach-picker-divider' />
+              <button
+                className='attach-picker-item'
+                onClick={() => { setUploadMode('document'); setShowUpload(true); setShowUploadPicker(false) }}
+              >
+                <FileText size={16} />
+                <span>Documents</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className='input-pill'>
           <button

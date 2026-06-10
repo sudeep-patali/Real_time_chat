@@ -1,23 +1,10 @@
-import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Lock, Zap, Smartphone } from 'lucide-react'
-import { useChatStore } from '../store/chatStore'
 import { useRooms } from '../hooks/useRooms'
 import Navbar from '../components/Navbar'
 import Sidebar from '../components/Sidebar'
 
 function Home() {
-  const navigate = useNavigate()
-  const rooms    = useChatStore(state => state.rooms)
-
   useRooms()
-
-  useEffect(() => {
-    if (rooms.length > 0) {
-      const first = rooms[0]
-      navigate(first.isGroup ? `/group/${first.id}` : `/chat/${first.id}`)
-    }
-  }, [rooms])
 
   return (
     <div className='home-shell' style={{ height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--color-bg)', overflow: 'hidden' }}>

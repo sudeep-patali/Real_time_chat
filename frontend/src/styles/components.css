@@ -845,3 +845,300 @@ a:focus-visible {
   background-color: var(--color-online);
   border: 2px solid var(--color-surface);
 }
+
+/* ══════════════════════════════════════════
+   FILE UPLOAD MODAL (multi-file)
+══════════════════════════════════════════ */
+
+.fu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  padding: 16px;
+}
+
+.fu-modal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  overflow: hidden;
+}
+
+/* Header */
+.fu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.fu-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text);
+}
+.fu-title { font-size: 15px; font-weight: 700; color: var(--color-text); }
+.fu-close-btn {
+  width: 32px; height: 32px;
+  border-radius: 50%; border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s;
+}
+.fu-close-btn:hover { background: var(--color-btn-ghost-hover); color: var(--color-text); }
+
+/* Drop zone */
+.fu-dropzone {
+  border: 2px dashed var(--color-border);
+  border-radius: 10px;
+  padding: 20px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.fu-dropzone:hover,
+.fu-dropzone--drag {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+.fu-drop-icon { color: var(--color-text-dim); margin-bottom: 6px; }
+.fu-drop-text { font-size: 13px; font-weight: 600; color: var(--color-text); margin: 0 0 4px; }
+.fu-drop-hint { font-size: 11px; color: var(--color-text-dim); margin: 0; line-height: 1.5; }
+
+/* Global error */
+.fu-global-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(241,92,109,0.08);
+  border: 1px solid rgba(241,92,109,0.25);
+  border-radius: 8px;
+  color: var(--color-error);
+  flex-shrink: 0;
+}
+.fu-global-error-text {
+  font-size: 12px;
+  font-family: inherit;
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+/* File list */
+.fu-file-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.fu-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--color-surface-2);
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  transition: border-color 0.12s;
+}
+.fu-file-row--done    { border-color: rgba(0,168,132,0.3); }
+.fu-file-row--error   { border-color: rgba(241,92,109,0.3); background: rgba(241,92,109,0.04); }
+.fu-file-row--uploading { border-color: rgba(0,168,132,0.2); }
+
+/* Thumbnail */
+.fu-file-thumb {
+  width: 44px; height: 44px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  display: flex; align-items: center; justify-content: center;
+}
+.fu-thumb-img  { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fu-thumb-icon { color: var(--color-text-dim); }
+
+/* File info */
+.fu-file-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.fu-file-name {
+  font-size: 13px; font-weight: 500; color: var(--color-text);
+  margin: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fu-file-meta {
+  font-size: 11px; color: var(--color-text-dim); margin: 0;
+  display: flex; align-items: center; gap: 6px;
+}
+.fu-type-badge {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.fu-progress-track {
+  height: 3px;
+  background: var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.fu-progress-bar {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+.fu-file-error { font-size: 11px; color: var(--color-error); margin: 0; }
+
+/* Status cell */
+.fu-file-status { flex-shrink: 0; display: flex; align-items: center; }
+.fu-status-pct  { font-size: 11px; color: var(--color-text-muted); font-weight: 600; min-width: 32px; text-align: right; }
+.fu-status-done { font-size: 15px; color: var(--color-primary); font-weight: 700; }
+.fu-remove-btn  {
+  width: 26px; height: 26px;
+  border-radius: 50%; border: none;
+  background: transparent;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+.fu-remove-btn:hover { background: rgba(241,92,109,0.1); color: var(--color-error); }
+
+/* Actions */
+.fu-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-divider);
+}
+.fu-count-hint  { font-size: 12px; color: var(--color-text-dim); flex: 1; }
+.fu-action-btns { display: flex; gap: 8px; }
+
+.fu-cancel-btn {
+  padding: 8px 16px; border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: transparent; color: var(--color-text-muted);
+  font-size: 13px; cursor: pointer;
+  transition: background 0.12s;
+}
+.fu-cancel-btn:hover { background: var(--color-btn-ghost-hover); }
+
+.fu-upload-btn {
+  padding: 8px 16px; border-radius: 8px;
+  border: 1px solid var(--color-primary);
+  background: transparent; color: var(--color-primary);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background 0.12s;
+}
+.fu-upload-btn:hover { background: var(--color-primary-light); }
+.fu-upload-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.fu-send-btn {
+  padding: 8px 18px; border-radius: 8px;
+  border: none; background: var(--color-primary);
+  color: var(--color-unread-text);
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  transition: background 0.12s;
+}
+.fu-send-btn:hover:not(:disabled) { background: var(--color-primary-hover); }
+.fu-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* FileUpload additions — status labels + button spinner */
+.fu-status-label            { font-size: 10px; font-weight: 600; border-radius: 4px; padding: 1px 6px; }
+.fu-status-label--pending   { color: var(--color-text-dim); background: var(--color-surface); border: 1px solid var(--color-border); }
+.fu-status-label--uploading { color: #f59e0b; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); }
+.fu-status-label--done      { color: var(--color-primary); background: var(--color-primary-light); border: 1px solid rgba(0,168,132,0.25); }
+.fu-status-label--error     { color: var(--color-error); background: rgba(241,92,109,0.08); border: 1px solid rgba(241,92,109,0.25); }
+.fu-btn-spinner {
+  width: 12px; height: 12px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ginv-spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════
+   ATTACH TYPE PICKER (MessageInput)
+══════════════════════════════════════════ */
+.attach-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.attach-picker {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  overflow: hidden;
+  z-index: var(--z-dropdown);
+  min-width: 180px;
+  animation: attach-picker-in 0.15s ease;
+}
+
+@keyframes attach-picker-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.attach-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 16px;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.attach-picker-item:hover {
+  background: var(--color-surface-2);
+}
+
+.attach-picker-item svg {
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.attach-picker-divider {
+  height: 1px;
+  background: var(--color-divider);
+  margin: 0;
+}

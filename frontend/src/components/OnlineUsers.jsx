@@ -1,38 +1,40 @@
 import { useMemo } from 'react'
 import { useChatStore } from '../store/chatStore'
-import { useAuth } from '../hooks/useAuth'
+import { useAuthStore } from '../store/authStore'
 import { generateAvatar } from '../utils/generateAvatar'
 
 function OnlineUsers() {
   const onlineUsers = useChatStore(state => state.onlineUsers)
   const rooms       = useChatStore(state => state.rooms)
-  const { currentUser } = useAuth()
+  const currentUser = useAuthStore(state => state.currentUser)
 
-  // Build userId → { name, avatar } from all available sources in rooms
+  // Build every known user's info from all available sources
   const userMap = useMemo(() => {
     const map = {}
 
-    // Add current user themselves
+    // 1. Current logged-in user
     if (currentUser) {
       const id = (currentUser._id || currentUser.id)?.toString()
       if (id) map[id] = { name: currentUser.name || 'Me', avatar: currentUser.avatar || null }
     }
 
     rooms.forEach(room => {
-      // DM rooms: otherUser has name + avatar
-      if (room.otherUser) {
-        const id = (room.otherUser._id || room.otherUser.id)?.toString()
-        if (id && !map[id]) {
-          map[id] = { name: room.otherUser.name || 'User', avatar: room.otherUser.avatar || null }
+      // 2. DM rooms — otherUser is the most reliable source
+      if (!room.isGroup && room.otherUser) {
+        const u  = room.otherUser
+        const id = (u._id || u.id)?.toString()
+        if (id && u.name && !map[id]) {
+          map[id] = { name: u.name, avatar: u.avatar || null }
         }
       }
 
-      // Group rooms: participantIds may be objects with name/avatar
+      // 3. Group rooms — participantIds are populated objects
       ;(room.participantIds || []).forEach(p => {
         if (!p || typeof p !== 'object') return
-        const id = (p._id || p.id)?.toString()
-        if (id && !map[id]) {
-          map[id] = { name: p.name || 'User', avatar: p.avatar || null }
+        const id   = (p._id || p.id)?.toString()
+        const name = p.name
+        if (id && name && !map[id]) {
+          map[id] = { name, avatar: p.avatar || null }
         }
       })
     })
@@ -47,14 +49,19 @@ function OnlineUsers() {
       <p className="online-users-label">Online</p>
       <div className="online-users-list">
         {onlineUsers.map(userId => {
-          const info   = userMap[userId?.toString()] || {}
-          const name   = info.name || 'User'
-          const avatar = info.avatar || generateAvatar(name)
+          const uid    = userId?.toString()
+          const info   = userMap[uid]
+          const name   = info?.name || null
+          const avatar = info?.avatar || (name ? generateAvatar(name) : null)
+
+          // Skip entirely if we have no idea who this user is
+          if (!name && !avatar) return null
+
           return (
-            <div key={userId} className="online-user-item" title={name}>
+            <div key={uid} className="online-user-item" title={name || ''}>
               <img
                 src={avatar}
-                alt={name}
+                alt={name || 'User'}
                 className="online-user-avatar"
               />
               <span className="online-user-dot" />

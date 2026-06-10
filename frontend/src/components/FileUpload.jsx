@@ -1,188 +1,306 @@
-import { useRef } from 'react'
-import { useMediaUpload } from '../hooks/useMediaUpload'
+import { useRef, useState, useCallback } from 'react'
+import { uploadFile } from '../services/mediaService'
+import { SUPPORTED_FILE_TYPES, MAX_FILE_SIZE, MEDIA_TYPE_MAP } from '../utils/constants'
+import { ImageIcon, Video, FileText, Film, X, Paperclip, Send, AlertCircle, Upload } from 'lucide-react'
 
-const TYPE_ICON = {
-  image:    '🖼️',
-  gif:      '🎞️',
-  video:    '🎬',
-  document: '📄',
+const LIMITS = { image: 10, video: 4, document: 5, gif: 10 }
+
+const formatBytes = (b) =>
+  b < 1024 ? `${b} B` : b < 1048576 ? `${(b/1024).toFixed(1)} KB` : `${(b/1048576).toFixed(1)} MB`
+
+const getMediaType = (file) => MEDIA_TYPE_MAP[file.type] || 'document'
+
+const TypeIcon = ({ type, size = 20 }) => {
+  if (type === 'image') return <ImageIcon size={size} />
+  if (type === 'video') return <Video size={size} />
+  if (type === 'gif')   return <Film size={size} />
+  return <FileText size={size} />
 }
 
-const formatBytes = (bytes) => {
-  if (bytes < 1024)       return `${bytes} B`
-  if (bytes < 1048576)    return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1048576).toFixed(1)} MB`
-}
+let _uid = 0
+const uid = () => `f${++_uid}`
 
-function FileUpload({ onUploadComplete, onClose, roomId }) {
+export default function FileUpload({ onUploadComplete, onClose, mode = null }) {
+  // mode: 'media' = images+videos only, 'document' = docs only, null = all
+  const acceptStr = mode === 'media'
+    ? 'image/*,video/mp4,video/webm,video/quicktime'
+    : mode === 'document'
+    ? 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain'
+    : 'image/*,video/mp4,video/webm,video/quicktime,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain'
+
+  const modeLabel = mode === 'media' ? 'Images & Videos' : mode === 'document' ? 'Documents' : 'Files'
   const inputRef = useRef(null)
-  const {
-    file, progress, uploadedUrl, mediaType, fileName, mimeType,
-    error, uploading, selectFile, reset
-  } = useMediaUpload()
+  // Use a ref for items so handleSend always reads latest state
+  const itemsRef             = useRef([])
+  const [items, _setItems]   = useState([])
+  const [sending, setSending] = useState(false)
+  const [errors,  setErrors]  = useState([])
+  const [dragging, setDragging] = useState(false)
+
+  // Always update both ref and state together
+  const setItems = useCallback((updater) => {
+    _setItems(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      itemsRef.current = next
+      return next
+    })
+  }, [])
+
+  // ── Add files ────────────────────────────────────────────────────────
+  const addFiles = useCallback((fileList) => {
+    setErrors([])
+    const incoming = Array.from(fileList)
+    const rejected = []
+    const toAdd    = []
+
+    for (const file of incoming) {
+      if (!SUPPORTED_FILE_TYPES.includes(file.type)) {
+        rejected.push(`"${file.name}" — unsupported type`); continue
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        rejected.push(`"${file.name}" — exceeds 50 MB`); continue
+      }
+      toAdd.push(file)
+    }
+
+    setItems(prev => {
+      const next   = [...prev]
+      const counts = {}
+      for (const it of next) counts[it.mediaType] = (counts[it.mediaType] || 0) + 1
+
+      // Count incoming files by type BEFORE adding anything
+      const incomingCounts = {}
+      for (const file of toAdd) {
+        const mt = getMediaType(file)
+        incomingCounts[mt] = (incomingCounts[mt] || 0) + 1
+      }
+
+      // Check if any type would exceed its limit — if so, block entire batch for that type
+      const blockedTypes = {}
+      for (const [mt, inCount] of Object.entries(incomingCounts)) {
+        const limit   = LIMITS[mt] ?? 5
+        const current = counts[mt] || 0
+        const total   = current + inCount
+        if (total > limit) {
+          blockedTypes[mt] = { limit, current, incoming: inCount, total }
+        }
+      }
+
+      if (Object.keys(blockedTypes).length > 0) {
+        const msgs = []
+        for (const [mt, info] of Object.entries(blockedTypes)) {
+          if (mt === 'image') {
+            msgs.push(`You can upload a maximum of ${info.limit} images only. You currently have ${info.current} and tried to add ${info.incoming} more (total ${info.total}). Please reduce your selection.`)
+          } else if (mt === 'video') {
+            msgs.push(`You can upload a maximum of ${info.limit} videos only. You currently have ${info.current} and tried to add ${info.incoming} more. Please reduce your selection.`)
+          } else if (mt === 'document') {
+            msgs.push(`You can upload a maximum of ${info.limit} documents only. You currently have ${info.current} and tried to add ${info.incoming} more. Please reduce your selection.`)
+          } else {
+            msgs.push(`You can upload a maximum of ${info.limit} ${mt}s only. Please reduce your selection.`)
+          }
+        }
+        setErrors(msgs)
+        return prev  // Return unchanged — do NOT add any files
+      }
+
+      // All within limits — add everything
+      for (const file of toAdd) {
+        const mediaType = getMediaType(file)
+        const effectiveType = mode === 'document' ? 'document' : mediaType
+        next.push({ id: uid(), file, mediaType: effectiveType, status: 'pending', progress: 0, url: null, fileName: file.name, mimeType: file.type, error: null })
+      }
+
+      if (rejected.length) setErrors(rejected)
+      return next
+    })
+  }, [setItems])
+
+  const removeItem = (id) => setItems(prev => prev.filter(it => it.id !== id))
+
+  // ── Upload one file ───────────────────────────────────────────────────
+  const uploadOne = useCallback(async (item) => {
+    setItems(prev => prev.map(it => it.id === item.id ? { ...it, status: 'uploading', progress: 0 } : it))
+    try {
+      const res = await uploadFile(item.file, (p) => {
+        setItems(prev => prev.map(it => it.id === item.id ? { ...it, progress: p } : it))
+      })
+      const { url, mediaType: mType, fileName: fName, mimeType: mime } = res.data
+      const updated = {
+        ...item,
+        status:    'done',
+        url,
+        mediaType: mType || item.mediaType,
+        fileName:  fName || item.fileName,
+        mimeType:  mime  || item.mimeType,
+        progress:  100,
+      }
+      setItems(prev => prev.map(it => it.id === item.id ? updated : it))
+      return updated
+    } catch {
+      setItems(prev => prev.map(it => it.id === item.id ? { ...it, status: 'error', error: 'Upload failed' } : it))
+      return null
+    }
+  }, [setItems])
+
+  // ── Send: upload pending → send all done ─────────────────────────────
+  const handleSend = useCallback(async () => {
+    setSending(true)
+    try {
+      const current = itemsRef.current
+      const pending = current.filter(it => it.status === 'pending')
+      const already = current.filter(it => it.status === 'done')
+
+      // Upload pending ones first (in parallel)
+      const freshlyUploaded = await Promise.all(pending.map(uploadOne))
+      const newDone = freshlyUploaded.filter(Boolean)
+
+      // Send all done items
+      const allToSend = [...already, ...newDone]
+      for (const it of allToSend) {
+        const msgType = it.mediaType === 'gif'   ? 'gif'
+                      : it.mediaType === 'image' ? 'image'
+                      : it.mediaType === 'video' ? 'video'
+                      : 'file'
+        onUploadComplete?.({ url: it.url, mediaType: msgType, fileName: it.fileName, mimeType: it.mimeType })
+      }
+
+      onClose?.()
+    } catch (err) {
+      console.error('Send error:', err)
+    } finally {
+      setSending(false)
+    }
+  }, [uploadOne, onUploadComplete, onClose])
 
   const handleDrop = (e) => {
-    e.preventDefault()
-    const dropped = e.dataTransfer.files[0]
-    if (dropped) selectFile(dropped)
+    e.preventDefault(); setDragging(false)
+    addFiles(e.dataTransfer.files)
   }
 
-  const handleSelect = (e) => {
-    const selected = e.target.files[0]
-    if (selected) selectFile(selected)
-  }
-
-  const handleAttach = () => {
-    if (!uploadedUrl) return
-    // Pass back url + type metadata so MessageInput can send correct message type
-    onUploadComplete?.({ url: uploadedUrl, mediaType, fileName, mimeType })
-    reset()
-    onClose?.()
-  }
-
-  const isImage = mediaType === 'image'
-  const isGif   = mediaType === 'gif'
-  const isVideo = mediaType === 'video'
+  const anyUploading = items.some(it => it.status === 'uploading')
+  const doneCount    = items.filter(it => it.status === 'done').length
+  const pendingCount = items.filter(it => it.status === 'pending').length
+  const canSend      = (doneCount + pendingCount) > 0 && !anyUploading && !sending
 
   return (
-    <div style={st.overlay}>
-      <div style={st.modal}>
+    <div className="fu-overlay">
+      <div className="fu-modal">
 
         {/* Header */}
-        <div style={st.header}>
-          <span style={st.title}>Share Media or File</span>
-          <button style={st.closeBtn} onClick={onClose}>✕</button>
+        <div className="fu-header">
+          <div className="fu-header-left">
+            <Paperclip size={17} />
+            <span className="fu-title">{modeLabel === 'Files' ? 'Share Files' : `Share ${modeLabel}`}</span>
+          </div>
+          <button className="fu-close-btn" onClick={onClose}><X size={17} /></button>
         </div>
 
         {/* Drop zone */}
-        {!file && (
-          <div
-            style={st.dropZone}
-            onDrop={handleDrop}
-            onDragOver={e => e.preventDefault()}
-            onClick={() => inputRef.current?.click()}
-          >
-            <p style={st.dropIcon}>📎</p>
-            <p style={st.dropText}>Drag and drop or click to browse</p>
-            <p style={st.dropHint}>
-              Images · Videos · PDF · Word · Excel · Text — up to 50 MB
-            </p>
-            <input
-              ref={inputRef}
-              type='file'
-              accept='image/*,video/mp4,video/webm,video/quicktime,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain'
-              style={{ display: 'none' }}
-              onChange={handleSelect}
-            />
-          </div>
-        )}
+        <div
+          className={`fu-dropzone${dragging ? ' fu-dropzone--drag' : ''}`}
+          onDrop={handleDrop}
+          onDragOver={e => { e.preventDefault(); setDragging(true) }}
+          onDragLeave={() => setDragging(false)}
+          onClick={() => inputRef.current?.click()}
+        >
+          <Paperclip size={20} className="fu-drop-icon" />
+          <p className="fu-drop-text">{items.length === 0 ? 'Drag & drop or click to browse' : 'Click to add more files'}</p>
+          <p className="fu-drop-hint">
+            {mode === 'media'    ? 'Images (max 10) · Videos (max 4) · max 50 MB each' :
+             mode === 'document' ? 'PDF · Word · Excel · Text · max 50 MB each' :
+             'Images (10) · Videos (4) · Documents (5) · max 50 MB each'}
+          </p>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept={acceptStr}
+            style={{ display: 'none' }}
+            onChange={e => { addFiles(e.target.files); e.target.value = '' }}
+          />
+        </div>
 
-        {/* File selected */}
-        {file && (
-          <div style={st.fileCard}>
-
-            {/* Image preview */}
-            {isImage && uploadedUrl && (
-              <div style={st.previewWrap}>
-                <img src={uploadedUrl} alt='preview' style={st.imagePreview} />
-              </div>
-            )}
-
-            {/* GIF preview — show animated with badge */}
-            {isGif && uploadedUrl && (
-              <div style={{ ...st.previewWrap, position: 'relative' }}>
-                <img src={uploadedUrl} alt='GIF preview' style={st.imagePreview} />
-                <span style={st.gifBadge}>GIF</span>
-              </div>
-            )}
-
-            {/* Video preview */}
-            {isVideo && uploadedUrl && (
-              <div style={st.previewWrap}>
-                <video src={uploadedUrl} controls style={st.videoPreview} />
-              </div>
-            )}
-
-            {/* File info row */}
-            <div style={st.fileRow}>
-              <span style={st.fileIcon}>{TYPE_ICON[mediaType] || '📄'}</span>
-              <div style={st.fileMeta}>
-                <p style={st.fileName}>{file.name}</p>
-                <p style={st.fileSize}>
-                  {formatBytes(file.size)}
-                  {mediaType && <span style={st.typeBadge}>{mediaType}</span>}
-                </p>
-              </div>
-              {!uploading && !uploadedUrl && (
-                <button style={st.removeBtn} onClick={reset}>✕</button>
-              )}
-              {uploadedUrl && <span style={st.checkmark}>✅</span>}
+        {/* Errors */}
+        {errors.length > 0 && (
+          <div className="fu-global-error">
+            <AlertCircle size={14} />
+            <div>
+              {errors.map((e, i) => <p key={i} className="fu-global-error-text">{e}</p>)}
             </div>
-
-            {/* Progress bar */}
-            {uploading && (
-              <div style={st.progressTrack}>
-                <div style={{ ...st.progressBar, width: `${progress}%` }} />
-              </div>
-            )}
-
-            {/* Uploading label */}
-            {uploading && (
-              <p style={st.progressLabel}>Uploading… {progress}%</p>
-            )}
           </div>
         )}
 
-        {/* Error */}
-        {error && <p style={st.error}>{error}</p>}
+        {/* File list */}
+        {items.length > 0 && (
+          <div className="fu-file-list">
+            {items.map(item => (
+              <div key={item.id} className={`fu-file-row fu-file-row--${item.status}`}>
+
+                <div className="fu-file-thumb">
+                  {(item.mediaType === 'image' || item.mediaType === 'gif') ? (
+                    <img src={URL.createObjectURL(item.file)} alt="" className="fu-thumb-img" />
+                  ) : item.mediaType === 'video' ? (
+                    <video src={URL.createObjectURL(item.file)} className="fu-thumb-img" />
+                  ) : (
+                    <div className="fu-thumb-icon"><TypeIcon type={item.mediaType} size={20} /></div>
+                  )}
+                </div>
+
+                <div className="fu-file-info">
+                  <p className="fu-file-name">{item.fileName}</p>
+                  <p className="fu-file-meta">
+                    {formatBytes(item.file.size)}
+                    <span className="fu-type-badge">{item.mediaType}</span>
+                    {item.status === 'pending'   && <span className="fu-status-label fu-status-label--pending">Pending</span>}
+                    {item.status === 'uploading' && <span className="fu-status-label fu-status-label--uploading">Uploading {item.progress}%</span>}
+                    {item.status === 'done'      && <span className="fu-status-label fu-status-label--done">Ready</span>}
+                    {item.status === 'error'     && <span className="fu-status-label fu-status-label--error">{item.error}</span>}
+                  </p>
+                  {item.status === 'uploading' && (
+                    <div className="fu-progress-track">
+                      <div className="fu-progress-bar" style={{ width: `${item.progress}%` }} />
+                    </div>
+                  )}
+                </div>
+
+                <div className="fu-file-status">
+                  {item.status === 'done' && <span className="fu-status-done">✓</span>}
+                  {(item.status === 'pending' || item.status === 'error') && (
+                    <button className="fu-remove-btn" onClick={() => removeItem(item.id)}>
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Actions */}
-        <div style={st.actions}>
-          <button style={st.cancelBtn} onClick={onClose}>Cancel</button>
-          <button
-            style={{ ...st.attachBtn, opacity: uploadedUrl ? 1 : 0.4, cursor: uploadedUrl ? 'pointer' : 'not-allowed' }}
-            onClick={handleAttach}
-            disabled={!uploadedUrl}
-          >
-            Send
-          </button>
+        <div className="fu-actions">
+          <span className="fu-count-hint">
+            {items.length === 0
+              ? 'No files selected'
+              : `${items.length} file${items.length !== 1 ? 's' : ''} selected`
+            }
+          </span>
+          <div className="fu-action-btns">
+            <button className="fu-cancel-btn" onClick={onClose} disabled={sending}>Cancel</button>
+            <button
+              className="fu-send-btn"
+              onClick={handleSend}
+              disabled={!canSend}
+            >
+              {sending
+                ? <><span className="fu-btn-spinner" /> Sending…</>
+                : <><Send size={13} /> Send{items.length > 1 ? ` (${items.length})` : ''}</>
+              }
+            </button>
+          </div>
         </div>
 
       </div>
     </div>
   )
 }
-
-const st = {
-  overlay:      { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 },
-  modal:        { backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440, margin: 16, display: 'flex', flexDirection: 'column', gap: 16 },
-  header:       { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  title:        { fontSize: 16, fontWeight: 600, color: 'var(--color-text)' },
-  closeBtn:     { background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 16, cursor: 'pointer', padding: 4 },
-  dropZone:     { border: '2px dashed var(--color-border)', borderRadius: 12, padding: '36px 20px', textAlign: 'center', cursor: 'pointer', transition: 'border-color 0.2s' },
-  dropIcon:     { fontSize: 34, marginBottom: 10 },
-  dropText:     { fontSize: 14, fontWeight: 500, color: 'var(--color-text)', marginBottom: 6 },
-  dropHint:     { fontSize: 11, color: 'var(--color-text-dim)', lineHeight: 1.5 },
-  fileCard:     { backgroundColor: 'var(--color-bg)', borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 },
-  previewWrap:  { borderRadius: 8, overflow: 'hidden', backgroundColor: '#000', maxHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  imagePreview: { maxWidth: '100%', maxHeight: 220, objectFit: 'contain', borderRadius: 8 },
-  videoPreview: { maxWidth: '100%', maxHeight: 220, borderRadius: 8 },
-  gifBadge:     { position: 'absolute', bottom: 8, left: 8, background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 4, padding: '2px 6px', letterSpacing: '0.5px' },
-  fileRow:      { display: 'flex', alignItems: 'center', gap: 12 },
-  fileIcon:     { fontSize: 26, flexShrink: 0 },
-  fileMeta:     { flex: 1, minWidth: 0 },
-  fileName:     { fontSize: 13, fontWeight: 500, color: 'var(--color-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  fileSize:     { fontSize: 11, color: 'var(--color-text-dim)', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 },
-  typeBadge:    { backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 4, padding: '1px 6px', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.4px', fontWeight: 600 },
-  removeBtn:    { background: 'none', border: 'none', color: 'var(--color-text-dim)', cursor: 'pointer', fontSize: 14 },
-  checkmark:    { fontSize: 18, flexShrink: 0 },
-  progressTrack:{ height: 4, backgroundColor: 'var(--color-border)', borderRadius: 4, overflow: 'hidden' },
-  progressBar:  { height: '100%', backgroundColor: 'var(--color-primary)', borderRadius: 4, transition: 'width 0.3s ease' },
-  progressLabel:{ fontSize: 11, color: 'var(--color-text-dim)', textAlign: 'right' },
-  error:        { fontSize: 13, color: 'var(--color-error)' },
-  actions:      { display: 'flex', gap: 10, justifyContent: 'flex-end' },
-  cancelBtn:    { padding: '9px 18px', borderRadius: 8, background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)', fontSize: 13, cursor: 'pointer' },
-  attachBtn:    { padding: '9px 20px', borderRadius: 8, background: 'var(--color-primary)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
-}
-
-export default FileUpload
