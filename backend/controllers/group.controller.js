@@ -23,6 +23,11 @@ function isAdminOf(room, userId) {
   return isCreator || isCoAdmin
 }
 
+// ─── helper: check if a user is the group creator ─────────────────────────
+function isCreatorOf(room, userId) {
+  return room.createdBy?.toString() === userId.toString()
+}
+
 // ─── helper: assert caller is a member ────────────────────────────────────
 async function assertMember(roomId, userId) {
   const room = await Room.findById(roomId)
@@ -48,13 +53,11 @@ exports.inviteUsers = async (req, res, next) => {
     const results = []
 
     for (const uid of userIds) {
-      // Skip if already a member
       if (room.participantIds.map(id => id.toString()).includes(uid)) {
         results.push({ userId: uid, status: 'already_member' })
         continue
       }
 
-      // Cancel any existing pending invite so we can resend
       await GroupInvitation.updateMany(
         { groupId, invitedUser: uid, status: 'pending' },
         { status: 'cancelled' }
@@ -75,7 +78,6 @@ exports.inviteUsers = async (req, res, next) => {
 
       results.push({ userId: uid, status: 'invited', invitationId: invitation._id })
 
-      // Persist notification
       await createNotification({
         userId:   uid,
         type:     'request',
@@ -86,9 +88,7 @@ exports.inviteUsers = async (req, res, next) => {
         avatar:   inviter.avatar
       })
 
-      // Real-time socket event emitted by route handler after response (via req.io)
       if (req.io) {
-        // Target only the invited user's socket(s) instead of broadcasting to all
         const allSockets = await req.io.fetchSockets()
         const targetSockets = allSockets.filter(
           s => s.user?._id?.toString() === uid.toString()
@@ -111,8 +111,6 @@ exports.inviteUsers = async (req, res, next) => {
         }
         if (targetSockets.length) {
           targetSockets.forEach(s => s.emit('group-invitation', invitePayload))
-        } else {
-          // User is offline – notification already persisted; no-op
         }
       }
     }
@@ -126,7 +124,6 @@ exports.inviteUsers = async (req, res, next) => {
 
 // ──────────────────────────────────────────────────────────────────────────
 // GET /api/groups/invitations/pending
-// Returns all pending invitations for the current user
 // ──────────────────────────────────────────────────────────────────────────
 exports.getPendingInvitations = async (req, res, next) => {
   try {
@@ -178,7 +175,6 @@ exports.acceptInvitation = async (req, res, next) => {
     invitation.status = 'accepted'
     await invitation.save()
 
-    // Add user to the group room
     const room = await Room.findByIdAndUpdate(
       invitation.groupId._id,
       { $addToSet: { participantIds: req.user._id } },
@@ -191,22 +187,11 @@ exports.acceptInvitation = async (req, res, next) => {
       const acceptingUID = req.user._id.toString()
       const inviterUID   = invitation.invitedBy._id.toString()
 
-      // 1. Make the accepting user's socket(s) join the Socket.IO room immediately
-      const acceptingSockets = allSockets.filter(
-        s => s.user?._id?.toString() === acceptingUID
-      )
+      const acceptingSockets = allSockets.filter(s => s.user?._id?.toString() === acceptingUID)
       acceptingSockets.forEach(s => s.join(groupRoomId))
+      acceptingSockets.forEach(s => s.emit('user-joined-group', { userId: acceptingUID, groupId: groupRoomId }))
 
-      // 2. Tell the accepting user to add the group to their sidebar
-      acceptingSockets.forEach(s => s.emit('user-joined-group', {
-        userId:  acceptingUID,
-        groupId: groupRoomId
-      }))
-
-      // 3. Notify the inviter (targeted)
-      const inviterSockets = allSockets.filter(
-        s => s.user?._id?.toString() === inviterUID
-      )
+      const inviterSockets = allSockets.filter(s => s.user?._id?.toString() === inviterUID)
       inviterSockets.forEach(s => s.emit('group-invitation-accepted', {
         invitationId: invitation._id.toString(),
         groupId:      groupRoomId,
@@ -215,14 +200,9 @@ exports.acceptInvitation = async (req, res, next) => {
         receiverId:   inviterUID
       }))
 
-      // 4. Tell ALL existing group members that a new member joined
       req.io.to(groupRoomId).emit('group-member-joined', {
         groupId: groupRoomId,
-        user: {
-          id:     req.user._id,
-          name:   req.user.name,
-          avatar: req.user.avatar
-        }
+        user: { id: req.user._id, name: req.user.name, avatar: req.user.avatar }
       })
     }
 
@@ -254,9 +234,7 @@ exports.rejectInvitation = async (req, res, next) => {
     if (req.io) {
       const allSockets = await req.io.fetchSockets()
       const inviterUID = invitation.invitedBy._id.toString()
-      const inviterSockets = allSockets.filter(
-        s => s.user?._id?.toString() === inviterUID
-      )
+      const inviterSockets = allSockets.filter(s => s.user?._id?.toString() === inviterUID)
       inviterSockets.forEach(s => s.emit('group-invitation-rejected', {
         invitationId: invitation._id.toString(),
         groupId:      invitation.groupId.toString(),
@@ -358,14 +336,12 @@ exports.updateGroup = async (req, res, next) => {
 
     const { groupName, description } = req.body
 
-    // Only admins can rename the group
     if (groupName !== undefined) {
       if (!callerIsAdmin)
         return res.status(403).json({ message: 'Only admins can change the group name' })
       if (groupName.trim()) room.groupName = groupName.trim()
     }
 
-    // All members can update description and avatar
     if (description !== undefined) room.description = description.trim()
     if (req.file) {
       room.avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
@@ -408,6 +384,46 @@ exports.makeAdmin = async (req, res, next) => {
     }
 
     res.json({ message: 'Member promoted to admin', room })
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ message: err.message })
+    next(err)
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// DELETE /api/groups/:id/admins/:memberId
+// Admin removes co-admin role from another admin (creator is protected)
+// ──────────────────────────────────────────────────────────────────────────
+exports.removeAdmin = async (req, res, next) => {
+  try {
+    const room = await assertAdmin(req.params.id, req.user._id)
+    const memberId = req.params.memberId
+
+    // Protect the group creator — their admin role is permanent
+    if (isCreatorOf(room, memberId)) {
+      return res.status(403).json({
+        message: 'The group creator is a permanent admin and cannot be removed from the admin role.'
+      })
+    }
+
+    // Target must currently be an admin
+    const adminIdStrings = (room.adminIds || []).map(id => id.toString())
+    if (!adminIdStrings.includes(memberId) && !isCreatorOf(room, memberId)) {
+      return res.status(400).json({ message: 'User is not an admin' })
+    }
+
+    room.adminIds = (room.adminIds || []).filter(id => id.toString() !== memberId)
+    await room.save()
+    await room.populate('participantIds', 'name avatar isOnline')
+
+    if (req.io) {
+      req.io.to(req.params.id).emit('group_updated', {
+        roomId:   req.params.id,
+        adminIds: room.adminIds.map(id => id.toString())
+      })
+    }
+
+    res.json({ message: 'Admin role removed', room })
   } catch (err) {
     if (err.status) return res.status(err.status).json({ message: err.message })
     next(err)

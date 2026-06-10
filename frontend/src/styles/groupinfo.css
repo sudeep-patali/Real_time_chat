@@ -1022,3 +1022,91 @@
   font-weight: 600;
   white-space: nowrap;
 }
+/* ══════════════════════════════════════════════════
+   ADDITIONS to groupinfo.css
+   Append these rules to the END of groupinfo.css
+   ══════════════════════════════════════════════════ */
+
+/* ── Group Creator badge ── */
+.gi-creator-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(234, 179, 8, 0.12);
+  color: #ca8a04;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Remove Admin button ── */
+.gi-remove-admin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-error, #f15c6d);
+  background: transparent;
+  color: var(--color-error, #f15c6d);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  white-space: nowrap;
+}
+
+.gi-remove-admin-btn:hover {
+  background: var(--color-error, #f15c6d);
+  color: #fff;
+}
+
+/* ── Member actions wrap (allow wrapping for multiple badges/buttons) ── */
+.gi-member-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* ── Hero avatar sizing fix (cover without stretching) ── */
+.gi-avatar-ring {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 3px solid var(--color-primary);
+  padding: 2px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.gi-hero-avatar-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.gi-hero-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+.gi-edit-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  border-radius: 50%;
+}

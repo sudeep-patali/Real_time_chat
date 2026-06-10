@@ -13,7 +13,7 @@ import {
   ArrowLeft, MessageCircle, Bell, BellOff, Pencil,
   Users, MessageSquare, Image, Paperclip, Info,
   User, Calendar, Trash2, LogOut, Flag, Clock,
-  Camera, Check, X, UserPlus, ShieldCheck
+  Camera, Check, X, UserPlus, ShieldCheck, ShieldOff, Crown
 } from 'lucide-react'
 import '../styles/chat.css'
 import '../styles/groupinfo.css'
@@ -111,9 +111,11 @@ export default function GroupInfo() {
     roomService.getRoomById(roomId)
       .then(res => {
         const room = res.data.room
-        // Build a unified admin ID set: createdBy + adminIds
+        const creatorId = room.createdBy?._id?.toString() || room.createdBy?.toString()
+
+        // adminIds includes the creator implicitly
         const adminIdSet = new Set([
-          room.createdBy?._id?.toString() || room.createdBy?.toString(),
+          creatorId,
           ...(room.adminIds || []).map(id => id?.toString())
         ].filter(Boolean))
 
@@ -123,16 +125,18 @@ export default function GroupInfo() {
           description: room.description || '',
           createdAt:   room.createdAt,
           createdBy:   room.createdBy,
+          creatorId,
           avatarUrl:   room.avatarUrl || null,
           adminIds:    [...adminIdSet],
           members:     (room.participantIds || []).map(p => {
             const pid = (p._id || p.id)?.toString()
             return {
-              id:       pid,
-              name:     p.name || 'Unknown',
-              avatar:   p.avatar || null,
-              isOnline: p.isOnline || false,
-              role:     adminIdSet.has(pid) ? 'admin' : 'member'
+              id:        pid,
+              name:      p.name || 'Unknown',
+              avatar:    p.avatar || null,
+              isOnline:  p.isOnline || false,
+              role:      adminIdSet.has(pid) ? 'admin' : 'member',
+              isCreator: pid === creatorId
             }
           })
         }
@@ -166,6 +170,9 @@ export default function GroupInfo() {
   const isAdmin = group?.adminIds?.includes(currentUser?.id?.toString()) ||
                   group?.createdBy?._id === currentUser?.id ||
                   group?.createdBy?.toString() === currentUser?.id?.toString()
+
+  // Is the current user the group creator?
+  const isCreator = group?.creatorId === currentUser?.id?.toString()
 
   const loadPendingInvites = useCallback(() => {
     if (!group || !isAdmin) return
@@ -253,6 +260,20 @@ export default function GroupInfo() {
         )
       }))
     } catch (err) { alert(err.response?.data?.message || 'Failed to make admin.') }
+  }
+
+  const handleRemoveAdmin = async (memberId, memberName) => {
+    if (!window.confirm(`Remove admin privileges from ${memberName}?`)) return
+    try {
+      await groupService.removeAdmin(group.id, memberId)
+      setGroup(g => ({
+        ...g,
+        adminIds: (g.adminIds || []).filter(id => id !== memberId),
+        members:  g.members.map(m =>
+          m.id === memberId ? { ...m, role: 'member' } : m
+        )
+      }))
+    } catch (err) { alert(err.response?.data?.message || 'Failed to remove admin.') }
   }
 
   // Save edits — members can update avatar/desc, only admins can rename
@@ -735,11 +756,18 @@ export default function GroupInfo() {
 
               {/* Member list */}
               {group.members.map((member, i) => {
-                const mInit        = (member.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
-                const isMe         = member.id?.toString() === currentUser?.id?.toString()
+                const mInit         = (member.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+                const isMe          = member.id?.toString() === currentUser?.id?.toString()
                 const memberIsAdmin = member.role === 'admin'
-                const canRemove    = isAdmin && !isMe && !memberIsAdmin
-                const canMakeAdmin = isAdmin && !isMe && !memberIsAdmin
+                const memberIsCreator = member.isCreator || member.id === group.creatorId
+
+                // Admin management controls only visible to current admins
+                const canManageAdmins  = isAdmin && !isMe
+                const canMakeAdmin     = canManageAdmins && !memberIsAdmin
+                // Cannot remove admin from the group creator
+                const canRemoveAdmin   = canManageAdmins && memberIsAdmin && !memberIsCreator
+                // Can remove a non-admin member
+                const canRemoveMember  = isAdmin && !isMe && !memberIsAdmin
 
                 return (
                   <div key={member.id}>
@@ -769,12 +797,23 @@ export default function GroupInfo() {
                       </div>
 
                       <div className="gi-member-actions">
+                        {/* Group Creator badge */}
+                        {memberIsCreator && (
+                          <span className="gi-creator-badge">
+                            <Crown size={11} style={{ marginRight: 3 }} />
+                            Creator
+                          </span>
+                        )}
+
+                        {/* Admin badge (shown for admins who are not the creator, or also for creator) */}
                         {memberIsAdmin && (
                           <span className="gi-admin-badge">
                             <ShieldCheck size={12} style={{ marginRight: 3 }} />
                             Admin
                           </span>
                         )}
+
+                        {/* Make Admin button — shown to current admins for non-admin members */}
                         {canMakeAdmin && (
                           <button
                             className="gi-make-admin-btn"
@@ -785,7 +824,21 @@ export default function GroupInfo() {
                             Make Admin
                           </button>
                         )}
-                        {canRemove && (
+
+                        {/* Remove Admin button — shown to current admins for non-creator admins */}
+                        {canRemoveAdmin && (
+                          <button
+                            className="gi-remove-admin-btn"
+                            onClick={() => handleRemoveAdmin(member.id, member.name)}
+                            title="Remove Admin"
+                          >
+                            <ShieldOff size={14} />
+                            Remove Admin
+                          </button>
+                        )}
+
+                        {/* Remove member button */}
+                        {canRemoveMember && (
                           <button
                             className="gi-remove-btn"
                             onClick={() => handleRemoveMember(member.id, member.name)}
