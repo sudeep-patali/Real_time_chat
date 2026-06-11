@@ -1,17 +1,56 @@
 import { useEffect, useCallback, useRef } from 'react'
 import { useNotificationStore } from '../store/notificationStore'
+import { useSettingsStore } from '../store/settingsStore'
 import * as notificationService from '../services/notificationService'
 import { useSocket } from './useSocket'
 import { NOTIFICATION_NEW, NOTIFICATION_READ_ALL, RECEIVE_MESSAGE, UNREAD_INCREMENT } from '../socket/socketEvents'
 import { useAuthStore } from '../store/authStore'
 import { useChatStore } from '../store/chatStore'
 
-// ── Web Audio API notification sound ──────────────────────────────────────
-function playNotificationSound(type = 'message') {
+// ── Sound generator ────────────────────────────────────────────────────────
+// soundType: 'message' | 'group'
+// soundVariant: 'default' | 'chime' | 'ping' | 'none'
+function playNotificationSound(soundType = 'message', soundVariant = 'default') {
+  if (soundVariant === 'none') return
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
 
-    if (type === 'message') {
+    if (soundVariant === 'chime') {
+      // Gentle chime — three descending tones
+      const now = ctx.currentTime
+      ;[1318, 1046, 880].forEach((freq, i) => {
+        const osc  = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, now + i * 0.18)
+        gain.gain.setValueAtTime(0.22, now + i * 0.18)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.18 + 0.25)
+        osc.start(now + i * 0.18)
+        osc.stop(now + i * 0.18 + 0.25)
+      })
+      return
+    }
+
+    if (soundVariant === 'ping') {
+      // Short bright ping
+      const now = ctx.currentTime
+      const osc  = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(1760, now)
+      gain.gain.setValueAtTime(0.3, now)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18)
+      osc.start(now)
+      osc.stop(now + 0.18)
+      return
+    }
+
+    // 'default' variants
+    if (soundType === 'message') {
       // WhatsApp-style double-tone
       const playTone = (freq, startTime, duration) => {
         const osc  = ctx.createOscillator()
@@ -27,9 +66,9 @@ function playNotificationSound(type = 'message') {
         osc.stop(startTime + duration)
       }
       const now = ctx.currentTime
-      playTone(880, now,       0.12)
+      playTone(880, now,        0.12)
       playTone(660, now + 0.14, 0.18)
-    } else if (type === 'group') {
+    } else if (soundType === 'group') {
       // Three rising tones for group
       const now = ctx.currentTime
       ;[880, 1046, 1318].forEach((freq, i) => {
@@ -80,6 +119,9 @@ export function useNotification() {
   const incrementUnread      = useNotificationStore(state => state.incrementUnread)
   const clearUnread          = useNotificationStore(state => state.clearUnread)
 
+  // ── Read notification settings from settingsStore ──────────────────────
+  const notifSettings = useSettingsStore(state => state.settings.notifications)
+
   const { on, off, emit }  = useSocket()
   const currentUser        = useAuthStore(state => state.currentUser)
   const activeRoomId       = useChatStore(state => state.activeRoomId)
@@ -93,10 +135,12 @@ export function useNotification() {
     )
   }, [rooms])
 
-  // Request browser notification permission on mount
+  // Request browser notification permission on mount (only if setting is on)
   useEffect(() => {
-    requestBrowserNotificationPermission()
-  }, [])
+    if (notifSettings?.browser) {
+      requestBrowserNotificationPermission()
+    }
+  }, [notifSettings?.browser])
 
   const fetchNotifications = useCallback(async () => {
     if (!currentUser) return
@@ -115,7 +159,7 @@ export function useNotification() {
     return () => window.removeEventListener('focus', handleFocus)
   }, [fetchNotifications])
 
-  // ── RECEIVE_MESSAGE → unread badge + sound ─────────────────────────────
+  // ── RECEIVE_MESSAGE → unread badge + sound + browser notification ──────
   useEffect(() => {
     const handleReceiveMessage = ({ message }) => {
       if (!message) return
@@ -127,20 +171,50 @@ export function useNotification() {
 
       const isActiveRoom = roomId && activeRoomId && roomId === activeRoomId.toString()
       const isMuted      = mutedRoomIds.current.has(roomId)
+      const room         = rooms.find(r => (r._id || r.id)?.toString() === roomId)
+      const isGroup      = room?.isGroup
+
+      // Determine which settings apply (group vs direct)
+      const masterEnabled  = !!notifSettings?.enabled
+      const groupEnabled   = !!notifSettings?.groupEnabled
+      const mentionEnabled = !!notifSettings?.mentionEnabled
+      const soundEnabled   = !!notifSettings?.sound
+      const browserEnabled = !!notifSettings?.browser
+
+      // Check if the current user is @mentioned in this message
+      const username    = currentUser?.username || currentUser?.name || ''
+      const msgContent  = message.content || ''
+      const isMentioned = isGroup && (
+        msgContent.includes(`@${username}`) ||
+        (message.mentions || []).some(
+          m => m?.toString() === currentUser?.id?.toString()
+        )
+      )
+
+      // For group messages: allow if groupEnabled is on, OR if user is @mentioned
+      // and mentionEnabled is on (mention override)
+      const notifAllowed = masterEnabled && (
+        isGroup
+          ? (groupEnabled || (isMentioned && mentionEnabled))
+          : true
+      )
 
       // Increment unread badge only if not in active room
       if (!isActiveRoom && roomId) {
         incrementUnread(roomId)
       }
 
-      // Play sound only for incoming messages in non-muted, non-active rooms
-      if (!isActiveRoom && !isMuted) {
-        const isGroup = rooms.find(r => (r._id || r.id)?.toString() === roomId)?.isGroup
-        playNotificationSound(isGroup ? 'group' : 'message')
+      // Play sound only for incoming messages in non-muted, non-active rooms,
+      // and only when the relevant settings toggles are ON
+      if (!isActiveRoom && !isMuted && notifAllowed && soundEnabled) {
+        const soundVariant = isGroup
+          ? (notifSettings?.groupSound || 'default')
+          : (notifSettings?.messageSound || 'default')
+        playNotificationSound(isGroup ? 'group' : 'message', soundVariant)
       }
 
-      // Browser notification when tab hidden
-      if (!isActiveRoom) {
+      // Browser notification when tab hidden — respect both master toggle and browser toggle
+      if (!isActiveRoom && notifAllowed && browserEnabled) {
         const senderName = message.senderName || message.sender?.name || 'Someone'
         const preview    = message.type === 'image' ? '📷 Photo'
                          : message.type === 'video' ? '🎥 Video'
@@ -153,7 +227,7 @@ export function useNotification() {
 
     on(RECEIVE_MESSAGE, handleReceiveMessage)
     return () => off(RECEIVE_MESSAGE, handleReceiveMessage)
-  }, [currentUser, activeRoomId, rooms, on, off, incrementUnread])
+  }, [currentUser, activeRoomId, rooms, on, off, incrementUnread, notifSettings])
 
   // ── UNREAD_INCREMENT from server ───────────────────────────────────────
   useEffect(() => {
@@ -173,15 +247,18 @@ export function useNotification() {
     const handleNewNotification = ({ notification, receiverId }) => {
       if (receiverId?.toString() === currentUser?.id?.toString()) {
         addNotification(notification)
-        // Light sound for system notifications (not message-triggered)
-        if (!['message'].includes(notification?.type)) {
-          playNotificationSound('message')
+
+        // Respect master notifications toggle for system notification sounds
+        if (notifSettings?.enabled && notifSettings?.sound) {
+          if (!['message'].includes(notification?.type)) {
+            playNotificationSound('message', notifSettings?.messageSound || 'default')
+          }
         }
       }
     }
     on(NOTIFICATION_NEW, handleNewNotification)
     return () => off(NOTIFICATION_NEW, handleNewNotification)
-  }, [currentUser, on, off, addNotification])
+  }, [currentUser, on, off, addNotification, notifSettings])
 
   // ── Auto-clear unread when room becomes active ─────────────────────────
   useEffect(() => {
