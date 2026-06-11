@@ -165,3 +165,12 @@
 }
 
 @keyframes ginv-spin { to { transform: rotate(360deg); } }
+/* ── Mobile full-screen overrides (inside .mph-content) ─────── */
+@media (max-width: 768px) {
+  .ginv-scroll { padding: 16px 12px 32px; }
+  .ginv-list   { max-width: 100%; }
+  .ginv-card   { padding: 14px 14px; }
+  .ginv-actions { justify-content: stretch; }
+  .ginv-btn-decline,
+  .ginv-btn-accept { flex: 1; justify-content: center; padding: 10px 12px; font-size: 14px; }
+}

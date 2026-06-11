@@ -17,7 +17,15 @@ import '../styles/chat.css'
 import '../styles/userinfo.css'
 
 // ── Animated online indicator ──────────────────────────────────────────────
-function OnlinePulse({ isOnline }) {
+function OnlinePulse({ isOnline, isHidden }) {
+  if (isHidden) {
+    return (
+      <span className='ui-online-pill'>
+        <span className='ui-online-dot' />
+        Not visible
+      </span>
+    )
+  }
   return (
     <span className={`ui-online-pill${isOnline ? ' ui-online-pill--online' : ''}`}>
       <span className={`ui-online-dot${isOnline ? ' ui-online-dot--active' : ''}`} />
@@ -68,9 +76,12 @@ function UserInfo() {
   const rid     = room?._id || room?.id
   const isMuted = room?.isMuted || false
 
-  const isOnline = liveOnline !== null
+  // null means the user's privacy setting hides online status from us
+  const rawOnline = liveOnline !== null
     ? liveOnline
-    : onlineUsers.includes(userId?.toString())
+    : (user?.isOnline !== undefined ? user.isOnline : onlineUsers.includes(userId?.toString()))
+  const isOnlineHidden = rawOnline === null
+  const isOnline = rawOnline === true
 
   // ── Load user ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -157,12 +168,16 @@ function UserInfo() {
     ? new Date(user.memberSince).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
     : null
 
-  const lastSeenRaw = liveLastSeen || user.lastSeen
-  const lastSeenText = isOnline
-    ? 'Online'
-    : lastSeenRaw
-      ? `Last seen ${new Date(lastSeenRaw).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
-      : 'Offline'
+  const lastSeenRaw = liveLastSeen || (user?.lastSeen ?? null)
+  const lastSeenText = isOnlineHidden
+    ? 'Not visible'
+    : isOnline
+      ? 'Online'
+      : lastSeenRaw === null
+        ? 'Hidden due to privacy settings'
+        : lastSeenRaw
+          ? `Last seen ${new Date(lastSeenRaw).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+          : 'Offline'
 
   return (
     <div className="ui-page">
@@ -191,7 +206,7 @@ function UserInfo() {
             </div>
 
             <h2 className="ui-hero-name">{user.name}</h2>
-            <OnlinePulse isOnline={isOnline} />
+            <OnlinePulse isOnline={isOnline} isHidden={isOnlineHidden} />
 
             {user.isBlocked && (
               <div className="ui-blocked-badge">

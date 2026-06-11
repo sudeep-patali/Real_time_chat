@@ -3,6 +3,52 @@ const Report = require('../models/Report');
 const Room   = require('../models/Room');
 const Message = require('../models/Message');
 
+// ── Privacy helper ────────────────────────────────────────────────────────────
+// Returns true when `viewerId` is an accepted contact of `targetUser`
+// (i.e. they share at least one accepted DM room).
+async function isContact(viewerId, targetUserId) {
+  const room = await Room.findOne({
+    isGroup: false,
+    participantIds: { $all: [viewerId, targetUserId] },
+    status: 'accepted',
+  });
+  return !!room;
+}
+
+// Applies a user's privacy settings to the fields we expose.
+// `viewer` is the requesting user's _id (string or ObjectId).
+// `target` is the full User document (must include `.privacy`).
+async function applyPrivacy(viewerIdRaw, target) {
+  const viewerId   = viewerIdRaw?.toString();
+  const targetId   = target._id?.toString();
+  const isSelf     = viewerId === targetId;
+  const privacy    = target.privacy || {};
+
+  // Owner always sees full data
+  if (isSelf) {
+    return {
+      avatar:    target.avatar,
+      isOnline:  target.isOnline,
+      lastSeen:  target.lastSeen,
+    };
+  }
+
+  const contact = await isContact(viewerId, target._id);
+
+  const canSee = (setting) => {
+    if (setting === 'everyone') return true;
+    if (setting === 'accepted') return contact;
+    return false; // 'nobody'
+  };
+
+  return {
+    avatar:   canSee(privacy.profilePhoto) ? target.avatar : null,
+    isOnline: canSee(privacy.onlineStatus) ? target.isOnline : null,  // null = hidden
+    lastSeen: canSee(privacy.lastSeen)     ? target.lastSeen : null,
+  };
+}
+
+
 // GET /api/users/search
 exports.searchUsers = async (req, res, next) => {
   try {
@@ -19,20 +65,22 @@ exports.searchUsers = async (req, res, next) => {
     .select('name email avatar isOnline bio lastSeen username statusValue customStatus')
     .limit(20);
 
-    res.json({
-      users: users.map(u => ({
-        id:          u._id,
-        name:        u.name,
-        email:       u.email,
-        avatar:      u.avatar,
-        isOnline:    u.isOnline,
-        bio:         u.bio,
-        lastSeen:    u.lastSeen,
-        username:    u.username,
-        statusValue: u.statusValue,
+    const filtered = await Promise.all(users.map(async u => {
+      const pf = await applyPrivacy(req.user._id, u);
+      return {
+        id:           u._id,
+        name:         u.name,
+        email:        u.email,
+        avatar:       pf.avatar,
+        isOnline:     pf.isOnline,
+        bio:          u.bio,
+        lastSeen:     pf.lastSeen,
+        username:     u.username,
+        statusValue:  u.statusValue,
         customStatus: u.customStatus,
-      }))
-    });
+      };
+    }));
+    res.json({ users: filtered });
   } catch (err) { next(err); }
 };
 
@@ -44,20 +92,22 @@ exports.getAllUsers = async (req, res, next) => {
       .limit(50)
       .sort({ name: 1 });
 
-    res.json({
-      users: users.map(u => ({
-        id:          u._id,
-        name:        u.name,
-        email:       u.email,
-        avatar:      u.avatar,
-        isOnline:    u.isOnline,
-        bio:         u.bio,
-        lastSeen:    u.lastSeen,
-        username:    u.username,
-        statusValue: u.statusValue,
+    const filtered = await Promise.all(users.map(async u => {
+      const pf = await applyPrivacy(req.user._id, u);
+      return {
+        id:           u._id,
+        name:         u.name,
+        email:        u.email,
+        avatar:       pf.avatar,
+        isOnline:     pf.isOnline,
+        bio:          u.bio,
+        lastSeen:     pf.lastSeen,
+        username:     u.username,
+        statusValue:  u.statusValue,
         customStatus: u.customStatus,
-      }))
-    });
+      };
+    }));
+    res.json({ users: filtered });
   } catch (err) { next(err); }
 };
 
@@ -74,16 +124,19 @@ exports.getUserById = async (req, res, next) => {
     const otherUser    = await User.findById(user._id).select('blockedUsers');
     const hasBlockedMe = otherUser.blockedUsers.map(id => id.toString()).includes(req.user._id.toString());
 
+    const privacyFiltered = await applyPrivacy(req.user._id, user);
+
     res.json({
       user: {
         id:           user._id,
         name:         user.name,
         email:        user.email,
-        avatar:       user.avatar,
-        isOnline:     user.isOnline,
+        avatar:       privacyFiltered.avatar,
+        isOnline:     privacyFiltered.isOnline,
         bio:          user.bio,
-        lastSeen:     user.lastSeen,
+        lastSeen:     privacyFiltered.lastSeen,
         memberSince:  user.createdAt,
+        createdAt:    user.createdAt,
         username:     user.username,
         statusValue:  user.statusValue,
         customStatus: user.customStatus,
@@ -172,7 +225,27 @@ exports.updatePrivacy = async (req, res, next) => {
       { new: true }
     ).select('privacy');
 
-    res.json({ privacy: user.privacy, message: 'Privacy settings updated' });
+    const fullUser = await User.findById(req.user._id)
+      .select('name email avatar role username bio statusValue customStatus isOnline lastSeen createdAt privacy');
+    res.json({
+      privacy: user.privacy,
+      message: 'Privacy settings updated',
+      user: {
+        id:           fullUser._id,
+        name:         fullUser.name,
+        email:        fullUser.email,
+        avatar:       fullUser.avatar,
+        role:         fullUser.role,
+        username:     fullUser.username,
+        bio:          fullUser.bio          || '',
+        statusValue:  fullUser.statusValue  || 'available',
+        customStatus: fullUser.customStatus || '',
+        isOnline:     fullUser.isOnline,
+        lastSeen:     fullUser.lastSeen,
+        createdAt:    fullUser.createdAt,
+        privacy:      fullUser.privacy || {},
+      }
+    });
   } catch (err) { next(err); }
 };
 

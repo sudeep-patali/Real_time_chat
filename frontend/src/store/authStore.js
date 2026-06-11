@@ -28,7 +28,10 @@ export const useAuthStore = create((set) => ({
   },
 
   setUser: (user) => {
-    const normalized = { ...user, id: user.id || user._id }
+    // Deep-merge with existing stored user so fields like createdAt / privacy
+    // are never accidentally wiped when a partial update payload is passed in.
+    const existing   = JSON.parse(localStorage.getItem('user') || 'null') || {}
+    const normalized = { ...existing, ...user, id: user.id || user._id || existing.id }
     localStorage.setItem('user', JSON.stringify(normalized))
     set({ currentUser: normalized })
   },

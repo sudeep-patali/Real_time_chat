@@ -152,15 +152,63 @@ module.exports = (io) => {
       console.error('Auto-join / deliver error:', err)
     }
 
-    await User.findByIdAndUpdate(socket.user?._id, { isOnline: true })
+    await User.findByIdAndUpdate(socket.user?._id, { isOnline: true, lastSeen: new Date() })
 
-    io.emit('user_online', { userId: socket.user?._id.toString(), isOnline: true })
-
+    // Emit to each connected socket respecting the target user's onlineStatus privacy
     try {
-      const onlineUsers = await User.find({ isOnline: true, _id: { $ne: socket.user._id } }).select('_id')
-      onlineUsers.forEach(u => {
-        socket.emit('user_online', { userId: u._id.toString(), isOnline: true })
-      })
+      const thisUser = await User.findById(socket.user._id).select('privacy')
+      const onlineStatusPref = thisUser?.privacy?.onlineStatus || 'everyone'
+
+      if (onlineStatusPref === 'everyone') {
+        // Broadcast to all
+        io.emit('user_online', { userId: socket.user._id.toString(), isOnline: true })
+      } else if (onlineStatusPref === 'accepted') {
+        // Only send to contacts (users sharing an accepted DM room)
+        const contactRooms = await Room.find({
+          isGroup: false,
+          participantIds: socket.user._id,
+          status: 'accepted',
+        }).select('participantIds')
+        const contactIds = new Set()
+        contactRooms.forEach(r => {
+          r.participantIds.forEach(pid => {
+            if (pid.toString() !== socket.user._id.toString()) contactIds.add(pid.toString())
+          })
+        })
+        // Send to self always + contacts
+        socket.emit('user_online', { userId: socket.user._id.toString(), isOnline: true })
+        io.sockets.sockets.forEach(s => {
+          if (s.user && contactIds.has(s.user._id.toString())) {
+            s.emit('user_online', { userId: socket.user._id.toString(), isOnline: true })
+          }
+        })
+      } else {
+        // nobody — only send to self (so own profile page shows correct status)
+        socket.emit('user_online', { userId: socket.user._id.toString(), isOnline: true })
+      }
+    } catch (err) {
+      console.error('Presence broadcast error:', err)
+      io.emit('user_online', { userId: socket.user?._id.toString(), isOnline: true })
+    }
+
+    // Bootstrap: tell this socket which other users are online (privacy-aware)
+    try {
+      const onlineUsers = await User.find({ isOnline: true, _id: { $ne: socket.user._id } })
+        .select('_id privacy')
+      for (const u of onlineUsers) {
+        const pref = u.privacy?.onlineStatus || 'everyone'
+        if (pref === 'everyone') {
+          socket.emit('user_online', { userId: u._id.toString(), isOnline: true })
+        } else if (pref === 'accepted') {
+          const shared = await Room.findOne({
+            isGroup: false,
+            participantIds: { $all: [socket.user._id, u._id] },
+            status: 'accepted',
+          })
+          if (shared) socket.emit('user_online', { userId: u._id.toString(), isOnline: true })
+        }
+        // 'nobody' — don't emit at all
+      }
     } catch (err) {
       console.error('Bootstrap online users error:', err)
     }
@@ -787,10 +835,39 @@ module.exports = (io) => {
 
     // ── Disconnect ────────────────────────────────────────────────────────────
     socket.on('disconnect', async () => {
-      await User.findByIdAndUpdate(socket.user?._id, {
-        isOnline: false, lastSeen: new Date()
-      })
-      io.emit('user_online', { userId: socket.user?._id.toString(), isOnline: false })
+      const now = new Date()
+      await User.findByIdAndUpdate(socket.user?._id, { isOnline: false, lastSeen: now })
+
+      try {
+        const thisUser = await User.findById(socket.user._id).select('privacy')
+        const onlineStatusPref = thisUser?.privacy?.onlineStatus || 'everyone'
+
+        if (onlineStatusPref === 'everyone') {
+          io.emit('user_online', { userId: socket.user._id.toString(), isOnline: false, lastSeen: now })
+        } else if (onlineStatusPref === 'accepted') {
+          const contactRooms = await Room.find({
+            isGroup: false,
+            participantIds: socket.user._id,
+            status: 'accepted',
+          }).select('participantIds')
+          const contactIds = new Set()
+          contactRooms.forEach(r => {
+            r.participantIds.forEach(pid => {
+              if (pid.toString() !== socket.user._id.toString()) contactIds.add(pid.toString())
+            })
+          })
+          io.sockets.sockets.forEach(s => {
+            if (s.user && (contactIds.has(s.user._id.toString()) || s.user._id.toString() === socket.user._id.toString())) {
+              s.emit('user_online', { userId: socket.user._id.toString(), isOnline: false, lastSeen: now })
+            }
+          })
+        }
+        // 'nobody' — broadcast nothing on disconnect either
+      } catch (err) {
+        console.error('Disconnect presence error:', err)
+        io.emit('user_online', { userId: socket.user?._id.toString(), isOnline: false, lastSeen: now })
+      }
+
       console.log('Disconnected:', socket.user?.name)
     })
   })

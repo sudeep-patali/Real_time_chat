@@ -85,6 +85,10 @@ async function issueSession(res, user, req) {
   const accessToken  = generateAccessToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
 
+  // Ensure we have full user data (callers may pass a partial document)
+  const fullUser = await User.findById(user._id)
+    .select('name email avatar role username bio statusValue customStatus isOnline lastSeen createdAt privacy');
+
   await RefreshToken.create({
     token:     refreshToken,
     userId:    user._id,
@@ -102,8 +106,25 @@ async function issueSession(res, user, req) {
     await logAudit(user._id, 'login', { ip, device, severity: 'info' });
   } catch (_) { /* non-fatal */ }
 
+  // Mark the user online and refresh lastSeen on every fresh login
+  await User.findByIdAndUpdate(user._id, { isOnline: true, lastSeen: new Date() });
+
   return {
-    user:  { id: user._id, name: user.name, email: user.email, avatar: user.avatar, role: user.role, username: user.username },
+    user: {
+      id:           fullUser._id,
+      name:         fullUser.name,
+      email:        fullUser.email,
+      avatar:       fullUser.avatar,
+      role:         fullUser.role,
+      username:     fullUser.username,
+      bio:          fullUser.bio          || '',
+      statusValue:  fullUser.statusValue  || 'available',
+      customStatus: fullUser.customStatus || '',
+      isOnline:     true,
+      lastSeen:     fullUser.lastSeen,
+      createdAt:    fullUser.createdAt,
+      privacy:      fullUser.privacy || {},
+    },
     token: accessToken,
   };
 }

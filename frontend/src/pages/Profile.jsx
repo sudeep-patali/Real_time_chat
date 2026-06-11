@@ -193,8 +193,21 @@ function Profile() {
     setStatusValue(currentUser.statusValue || 'available')
     setCustomStatus(currentUser.customStatus || '')
     setAvatarSrc(currentUser.avatar || generateAvatar(currentUser.name || 'U'))
-    const storedPrivacy = JSON.parse(localStorage.getItem(`privacy_${currentUser.id}`) || 'null')
-    if (storedPrivacy) setPrivacy(storedPrivacy)
+    // Load privacy from the user record (sourced from DB on login / page load).
+    // Fall back to localStorage if the server record has no privacy yet.
+    const dbPrivacy = currentUser.privacy
+    const localPrivacy = JSON.parse(localStorage.getItem(`privacy_${currentUser.id}`) || 'null')
+    if (dbPrivacy && Object.keys(dbPrivacy).length > 0) {
+      setPrivacy({
+        profilePhoto: dbPrivacy.profilePhoto || 'everyone',
+        lastSeen:     dbPrivacy.lastSeen     || 'everyone',
+        onlineStatus: dbPrivacy.onlineStatus || 'everyone',
+        addToGroups:  dbPrivacy.addToGroups  || 'everyone',
+        messages:     dbPrivacy.messages     || 'everyone',
+      })
+    } else if (localPrivacy) {
+      setPrivacy(localPrivacy)
+    }
     setLoading(false)
   }, [currentUser])
 
@@ -313,11 +326,24 @@ function Profile() {
   const handlePrivacySave = async () => {
     setPrivacySaving(true); setPrivacySuccess(false)
     try {
-      await userService.updatePrivacy?.(privacy)
-    } catch { /* store locally anyway */ } finally {
+      const res = await userService.updatePrivacy?.(privacy)
+      // Sync the updated user (with new privacy) back into the auth store
+      if (res?.data?.user) {
+        setUser(res.data.user)
+      } else {
+        // Partial update: merge privacy into current user
+        setUser({ ...currentUser, privacy })
+      }
       localStorage.setItem(`privacy_${currentUser?.id}`, JSON.stringify(privacy))
       setPrivacySuccess(true)
       setTimeout(() => setPrivacySuccess(false), 3000)
+    } catch (err) {
+      // Store locally as fallback
+      localStorage.setItem(`privacy_${currentUser?.id}`, JSON.stringify(privacy))
+      setPrivacySuccess(true)
+      setTimeout(() => setPrivacySuccess(false), 3000)
+      console.error('Privacy save error:', err)
+    } finally {
       setPrivacySaving(false)
     }
   }
@@ -332,7 +358,9 @@ function Profile() {
     finally { setUnblockingId(null) }
   }
 
-  const isOnline = currentUser?.isOnline ?? false
+  // For your own profile you're always online (you're actively using the app).
+  // The stored isOnline value may lag until the next socket event.
+  const isOnline = true
 
   return (
     <div className='profile-shell'>
@@ -412,7 +440,9 @@ function Profile() {
             <div className='presence-strip'>
               <div className='presence-item'>
                 <span className='presence-label'>Last Seen</span>
-                <span className='presence-value'>{formatLastSeen(currentUser?.lastSeen)}</span>
+                <span className='presence-value'>
+                  {currentUser?.lastSeen ? formatLastSeen(currentUser.lastSeen) : 'Just now'}
+                </span>
               </div>
               <div className='presence-divider' />
               <div className='presence-item'>
