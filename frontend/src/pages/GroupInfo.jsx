@@ -514,16 +514,6 @@ export default function GroupInfo() {
                   )}
                 </p>
 
-                {/* Stats */}
-                <div className="gi-stats-row">
-                  <StatCard icon={<Users size={16} />} label="Members" value={group.members.length} />
-                  {totalMsgs !== null && (
-                    <StatCard icon={<MessageSquare size={16} />} label="Messages" value={totalMsgs} />
-                  )}
-                  <StatCard icon={<Image size={16} />} label="Media" value={media.length} />
-                  <StatCard icon={<Paperclip size={16} />} label="Docs" value={docs.length} />
-                </div>
-
                 {/* Action buttons — Edit Group visible to ALL members */}
                 <div className="gi-action-row">
                   <button

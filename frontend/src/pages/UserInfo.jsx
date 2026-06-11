@@ -200,29 +200,6 @@ function UserInfo() {
               </div>
             )}
 
-            {/* Stats Row */}
-            {(totalMsgs !== null || media.length > 0) && (
-              <div className="ui-stats-row">
-                {totalMsgs !== null && (
-                  <StatCard
-                    icon={<MessageSquare size={18} style={{ color: 'var(--color-primary)' }} />}
-                    label="Messages"
-                    value={totalMsgs}
-                  />
-                )}
-                <StatCard
-                  icon={<Image size={18} style={{ color: 'var(--color-primary)' }} />}
-                  label="Media"
-                  value={media.length}
-                />
-                <StatCard
-                  icon={<Paperclip size={18} style={{ color: 'var(--color-primary)' }} />}
-                  label="Docs"
-                  value={docs.length}
-                />
-              </div>
-            )}
-
             {/* Action buttons */}
             <div className="ui-action-row">
               <button

@@ -4,16 +4,18 @@ import { useChat } from '../hooks/useChat'
 import { useAuth } from '../hooks/useAuth'
 import { useChatStore } from '../store/chatStore'
 import { useRooms } from '../hooks/useRooms'
+import { useMobileNav } from '../hooks/useMobileNav'
 import Navbar from '../components/Navbar'
 import Sidebar from '../components/Sidebar'
 import ChatBox from '../components/ChatBox'
 import MessageInput from '../components/MessageInput'
-import { Search, MoreVertical } from 'lucide-react'
+import { Search, MoreVertical, ArrowLeft } from 'lucide-react'
 import '../styles/chat.css'
 
 function GroupChat() {
   const { roomId }   = useParams()
   const navigate     = useNavigate()
+  const { isMobile } = useMobileNav()
   const { messages, typingUsers, sendMessage, editMessage, deleteMessage } = useChat(roomId)
   const { currentUser } = useAuth()
   const rooms        = useChatStore(state => state.rooms)
@@ -88,15 +90,39 @@ function GroupChat() {
 
   const activeMatchMsgIndex = matchCount > 0 ? matches[matchIndex] : -1
 
+  // ── Mobile back — return to chat list, preserving browser history ──
+  const handleMobileBack = (e) => {
+    e.stopPropagation()
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1)
+    } else {
+      navigate('/', { replace: true })
+    }
+  }
+
   return (
     <div className="chat-shell">
-      <Navbar />
+      {/* Navbar hidden on mobile when chat is open */}
+      {!isMobile && <Navbar />}
       <div className="chat-body">
-        <Sidebar />
+        {/* Sidebar hidden on mobile when chat is open */}
+        {!isMobile && <Sidebar />}
         <div className="chat-main">
 
           {/* ── Header ── */}
           <div className="chat-header" onClick={() => navigate(`/group/${roomId}/info`)}>
+
+            {/* Back arrow — mobile only */}
+            {isMobile && (
+              <button
+                className='chat-header-back-btn'
+                onClick={handleMobileBack}
+                aria-label='Back to chats'
+              >
+                <ArrowLeft size={20} />
+              </button>
+            )}
+
             <div className="chat-header-avatar-wrap">
               <div
                 className="chat-header-avatar"

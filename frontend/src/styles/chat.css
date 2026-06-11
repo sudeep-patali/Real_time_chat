@@ -132,6 +132,28 @@
   color: var(--color-text);
 }
 
+/* ── Chat header back button (mobile only) ── */
+.chat-header-back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  margin-left: -6px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.chat-header-back-btn:hover,
+.chat-header-back-btn:active {
+  background: var(--color-surface-2);
+}
+
 /* ── Chat wallpaper / area ── */
 .chat-area {
   flex: 1;
@@ -721,6 +743,26 @@
 
   .chat-header {
     padding: 8px 12px;
+  }
+
+  /* Chat opens as a full-screen page on mobile;
+     sidebar/navbar are not rendered (see Chat.jsx / GroupChat.jsx),
+     so the chat-shell simply fills the viewport. */
+  .chat-shell {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    z-index: 60;
+  }
+
+  .chat-body {
+    height: 100%;
+  }
+
+  .chat-main {
+    width: 100%;
   }
 }
 

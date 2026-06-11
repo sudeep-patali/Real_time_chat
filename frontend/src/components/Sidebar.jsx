@@ -51,6 +51,10 @@ function getLastMessagePreview(lastMessage) {
   }
 }
 
+// Persists across Sidebar unmount/remount (e.g. mobile back navigation)
+// so the conversation list scroll position is restored.
+let savedRoomListScroll = 0
+
 function PreviewContent({ preview }) {
   if (!preview || typeof preview === 'string') {
     return <span>{preview}</span>
@@ -90,6 +94,7 @@ function Sidebar() {
   const [showNotifications, setShowNotifications] = useState(false)
   const [searchQuery,       setSearchQuery]       = useState('')
   const menuRef = useRef(null)
+  const roomListRef = useRef(null)
 
   useEffect(() => {
     if (!showMenu) return
@@ -99,6 +104,16 @@ function Sidebar() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showMenu])
+
+  // ── Restore previous scroll position on mount, save on unmount ───────
+  useEffect(() => {
+    const el = roomListRef.current
+    if (el) el.scrollTop = savedRoomListScroll
+
+    return () => {
+      if (el) savedRoomListScroll = el.scrollTop
+    }
+  }, [])
 
   // ── Auto-clear unread when entering a room ────────────────────────────
   const handleRoomClick = (room) => {
@@ -328,7 +343,7 @@ function Sidebar() {
         )}
 
         {/* ── Conversation List ─────────────────────────────────────── */}
-        <div className='room-list'>
+        <div className='room-list' ref={roomListRef}>
           {rooms.length === 0 ? (
             <div className='sidebar-empty'>
               <span className='sidebar-empty-icon'>

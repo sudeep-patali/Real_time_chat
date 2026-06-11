@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Search, MoreVertical, Ban, ChevronUp, ChevronDown, X } from 'lucide-react'
+import { Search, MoreVertical, Ban, ChevronUp, ChevronDown, X, ArrowLeft } from 'lucide-react'
 import { useChat } from '../hooks/useChat'
 import { useAuth } from '../hooks/useAuth'
 import { useChatStore } from '../store/chatStore'
 import { useRooms } from '../hooks/useRooms'
+import { useMobileNav } from '../hooks/useMobileNav'
 import * as userService from '../services/userService'
 import * as roomService from '../services/roomService'
 import Navbar from '../components/Navbar'
@@ -17,6 +18,7 @@ import '../styles/chat.css'
 function Chat() {
   const { roomId }   = useParams()
   const navigate     = useNavigate()
+  const { isMobile } = useMobileNav()
   const { messages, typingUsers, sendMessage, editMessage, deleteMessage } = useChat(roomId)
   const { currentUser } = useAuth()
   const rooms        = useChatStore(state => state.rooms)
@@ -257,19 +259,43 @@ function Chat() {
     if (uid) navigate(`/user/${uid}`)
   }
 
+  // ── Mobile back — return to chat list, preserving browser history ──
+  const handleMobileBack = (e) => {
+    e.stopPropagation()
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1)
+    } else {
+      navigate('/', { replace: true })
+    }
+  }
+
   const isBlocked     = blockStatus.iBlockedThem || blockStatus.theyBlockedMe
   const blockedByThem = blockStatus.theyBlockedMe && !blockStatus.iBlockedThem
   const activeMatchMsgIndex = matchCount > 0 ? matches[matchIndex] : -1
 
   return (
     <div className='chat-shell'>
-      <Navbar />
+      {/* Navbar hidden on mobile when chat is open */}
+      {!isMobile && <Navbar />}
       <div className='chat-body'>
-        <Sidebar />
+        {/* Sidebar hidden on mobile when chat is open */}
+        {!isMobile && <Sidebar />}
         <div className='chat-main'>
 
           {/* ── Header ── */}
           <div className='chat-header' onClick={handleHeaderClick}>
+
+            {/* Back arrow — mobile only */}
+            {isMobile && (
+              <button
+                className='chat-header-back-btn'
+                onClick={handleMobileBack}
+                aria-label='Back to chats'
+              >
+                <ArrowLeft size={20} />
+              </button>
+            )}
+
             <div className='chat-header-avatar-wrap'>
               <div className='chat-header-avatar'>
                 {roomLoading && !displayName ? (
