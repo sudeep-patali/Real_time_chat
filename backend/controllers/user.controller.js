@@ -180,6 +180,7 @@ exports.updateProfile = async (req, res, next) => {
       isOnline:     user.isOnline,
       lastSeen:     user.lastSeen,
       createdAt:    user.createdAt,
+      privacy:      user.privacy || {},
     };
 
     // Broadcast profile change to all connected clients so

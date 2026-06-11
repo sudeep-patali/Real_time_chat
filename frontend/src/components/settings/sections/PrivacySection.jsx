@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSettingsStore } from '../../../store/settingsStore'
+import { useAuthStore } from '../../../store/authStore'
 import { useNotificationStore } from '../../../store/notificationStore'
 import { changePassword } from '../../../services/settingsService'
 import { updatePrivacy, getBlockedUsers, blockUser } from '../../../services/userService'
@@ -15,6 +16,8 @@ const VISIBILITY_OPTIONS = [
 function PrivacySection() {
   const { settings, updateSection, saveSettings } = useSettingsStore()
   const addAlert = useNotificationStore(s => s.addAlert)
+  const setUser = useAuthStore(state => state.setUser)
+  const currentUser = useAuthStore(state => state.currentUser)
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
   const [pwLoading, setPwLoading] = useState(false)
   const [blocked, setBlocked] = useState([])
@@ -39,10 +42,17 @@ function PrivacySection() {
   // updatePrivacy which maps to PUT /api/users/me/privacy.
   // We also update the local store so the UI is in sync without a reload.
   const savePrivacy = async (patch) => {
+    const newPrivacy = { ...privacy, ...patch }
     // Optimistic store update for immediate UI feedback
     updateSection('privacy', patch)
     try {
-      await updatePrivacy({ ...privacy, ...patch })
+      const res = await updatePrivacy(newPrivacy)
+      // Sync authStore so Profile page also sees the updated values
+      if (res?.data?.user) {
+        setUser(res.data.user)
+      } else if (currentUser) {
+        setUser({ ...currentUser, privacy: { ...(currentUser.privacy || {}), ...newPrivacy } })
+      }
       addAlert({ message: 'Privacy settings saved', type: 'success' })
     } catch {
       // Roll back the optimistic update

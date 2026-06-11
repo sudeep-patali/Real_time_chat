@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useAuthStore } from '../store/authStore'
+import { useSettingsStore } from '../store/settingsStore'
 import { generateAvatar } from '../utils/generateAvatar'
 import * as userService from '../services/userService'
 import Navbar from '../components/Navbar'
@@ -143,6 +144,8 @@ function PrivacyRow({ icon, label, value, onChange }) {
 function Profile() {
   const { currentUser } = useAuth()
   const setUser = useAuthStore(state => state.setUser)
+  const updateSettingsSection = useSettingsStore(state => state.updateSection)
+  const settingsPrivacy = useSettingsStore(state => state.settings.privacy)
   const navigate = useNavigate()
 
   const [activeTab, setActiveTab] = useState('Profile')
@@ -194,19 +197,25 @@ function Profile() {
     setCustomStatus(currentUser.customStatus || '')
     setAvatarSrc(currentUser.avatar || generateAvatar(currentUser.name || 'U'))
     // Load privacy from the user record (sourced from DB on login / page load).
-    // Fall back to localStorage if the server record has no privacy yet.
-    const dbPrivacy = currentUser.privacy
+    // Fall back to settingsStore or localStorage if the server record has no privacy yet.
+    const dbPrivacy    = currentUser.privacy
     const localPrivacy = JSON.parse(localStorage.getItem(`privacy_${currentUser.id}`) || 'null')
-    if (dbPrivacy && Object.keys(dbPrivacy).length > 0) {
+
+    // Priority: DB privacy > settingsStore privacy > localStorage > defaults
+    const sourcePrivacy = (dbPrivacy && Object.keys(dbPrivacy).length > 0)
+      ? dbPrivacy
+      : (settingsPrivacy && Object.keys(settingsPrivacy).length > 0)
+        ? settingsPrivacy
+        : localPrivacy
+
+    if (sourcePrivacy) {
       setPrivacy({
-        profilePhoto: dbPrivacy.profilePhoto || 'everyone',
-        lastSeen:     dbPrivacy.lastSeen     || 'everyone',
-        onlineStatus: dbPrivacy.onlineStatus || 'everyone',
-        addToGroups:  dbPrivacy.addToGroups  || 'everyone',
-        messages:     dbPrivacy.messages     || 'everyone',
+        profilePhoto: sourcePrivacy.profilePhoto || 'everyone',
+        lastSeen:     sourcePrivacy.lastSeen     || 'everyone',
+        onlineStatus: sourcePrivacy.onlineStatus || 'everyone',
+        addToGroups:  sourcePrivacy.addToGroups  || 'everyone',
+        messages:     sourcePrivacy.messages     || 'everyone',
       })
-    } else if (localPrivacy) {
-      setPrivacy(localPrivacy)
     }
     setLoading(false)
   }, [currentUser])
@@ -326,23 +335,28 @@ function Profile() {
   const handlePrivacySave = async () => {
     setPrivacySaving(true); setPrivacySuccess(false)
     try {
-      const res = await userService.updatePrivacy?.(privacy)
-      // Sync the updated user (with new privacy) back into the auth store
+      const res = await userService.updatePrivacy(privacy)
+      // Update authStore — this persists privacy into localStorage via setUser
       if (res?.data?.user) {
         setUser(res.data.user)
       } else {
-        // Partial update: merge privacy into current user
         setUser({ ...currentUser, privacy })
       }
-      localStorage.setItem(`privacy_${currentUser?.id}`, JSON.stringify(privacy))
+      // Sync the Settings page store so PrivacySection shows up-to-date values
+      // without needing a page reload or separate API call.
+      updateSettingsSection('privacy', {
+        lastSeen:        privacy.lastSeen,
+        onlineStatus:    privacy.onlineStatus,
+        addToGroups:     privacy.addToGroups,
+        readReceipts:    privacy.readReceipts    ?? true,
+        typingIndicator: privacy.typingIndicator ?? true,
+      })
       setPrivacySuccess(true)
       setTimeout(() => setPrivacySuccess(false), 3000)
     } catch (err) {
-      // Store locally as fallback
-      localStorage.setItem(`privacy_${currentUser?.id}`, JSON.stringify(privacy))
-      setPrivacySuccess(true)
-      setTimeout(() => setPrivacySuccess(false), 3000)
+      // Do NOT show success on failure — show an error instead
       console.error('Privacy save error:', err)
+      alert(err?.response?.data?.message || 'Failed to save privacy settings. Please try again.')
     } finally {
       setPrivacySaving(false)
     }
