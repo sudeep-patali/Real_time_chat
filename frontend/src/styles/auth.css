@@ -2,12 +2,14 @@
 
 .auth-shell {
   min-height: 100vh;
+  height: 100vh;
   width: 100%;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   background: var(--color-bg);
   padding: 20px;
+  overflow-y: auto;
 }
 
 .auth-card {
@@ -16,12 +18,12 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 20px;
-  padding: 40px 36px 36px;
+  padding: 28px 32px 28px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.2);
   overflow: visible;
   position: relative;
+  margin: auto 0;
 }
-
 /* ── Back button (OTP screen) ── */
 .auth-back-btn {
   display: inline-flex;
@@ -47,10 +49,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 28px;
-  gap: 8px;
+  margin-bottom: 16px;
+  gap: 4px;
 }
-
 .auth-logo {
   font-size: 28px;
   font-weight: 700;
@@ -85,12 +86,11 @@
   flex-direction: column;
   gap: 16px;
 }
-
 .auth-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 .auth-field:last-of-type { margin-bottom: 0; }
 
@@ -333,7 +333,9 @@
   caret-color: var(--color-primary);
   transition: border-color 0.15s, box-shadow 0.15s;
   /* Remove default number spinners */
-  -moz-appearance: textfield;
+  /* Remove default number spinners */
+-moz-appearance: textfield;
+appearance: textfield;
 }
 .auth-otp-box::-webkit-inner-spin-button,
 .auth-otp-box::-webkit-outer-spin-button { appearance: none; }

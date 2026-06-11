@@ -1,107 +1,50 @@
 /**
- * GoogleSignInButton
+ * GoogleSignInButton.jsx  —  frontend/src/components/GoogleSignInButton.jsx
  *
- * Renders a styled "Continue with Google" button using the Google Identity
- * Services (GIS) SDK loaded via a <script> tag in index.html.
+ * CHANGE: Replaced Google Identity Services (GIS) SDK with Firebase Auth.
+ *   - No longer needs the <script src="https://accounts.google.com/gsi/client"> tag.
+ *   - Uses signInWithPopup() from firebase/auth.
+ *   - Returns a Firebase ID token to the parent via onToken().
  *
- * Usage:
- *   <GoogleSignInButton onToken={(idToken) => handleGoogleToken(idToken)} />
- *
- * The parent is responsible for calling the backend with the idToken.
- *
- * Prerequisites — add to frontend/index.html <head>:
- *   <script src="https://accounts.google.com/gsi/client" async defer></script>
- *
- * And set in frontend/.env:
- *   VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+ * Usage (unchanged from parent's perspective):
+ *   <GoogleSignInButton onToken={(idToken) => handleFirebaseToken(idToken)} />
  */
 
-import { useEffect, useRef, useState } from 'react'
-
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+import { useState } from 'react'
+import { signInWithPopup } from 'firebase/auth'
+import { auth, googleProvider } from '../config/firebase'
 
 export function GoogleSignInButton({ onToken, disabled = false, label = 'Continue with Google' }) {
-  const containerRef = useRef(null)
-  const [sdkReady, setSdkReady] = useState(false)
-  const [renderFailed, setRenderFailed] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  // Wait for the GIS SDK to load
-  useEffect(() => {
-    if (typeof window.google !== 'undefined') {
-      setSdkReady(true)
-      return
-    }
-    const interval = setInterval(() => {
-      if (typeof window.google !== 'undefined') {
-        setSdkReady(true)
-        clearInterval(interval)
-      }
-    }, 200)
-    const timeout = setTimeout(() => {
-      clearInterval(interval)
-      setRenderFailed(true)
-    }, 10000)
-    return () => { clearInterval(interval); clearTimeout(timeout) }
-  }, [])
-
-  // Initialize and render the Google button once SDK is ready
-  useEffect(() => {
-    if (!sdkReady || !GOOGLE_CLIENT_ID || !containerRef.current) return
-
+  const handleClick = async () => {
+    if (disabled || loading) return
+    setLoading(true)
     try {
-      window.google.accounts.id.initialize({
-        client_id:  GOOGLE_CLIENT_ID,
-        callback:   (response) => {
-          if (response.credential) {
-            onToken(response.credential)
-          }
-        },
-        auto_select: false,
-        cancel_on_tap_outside: true,
-      })
-
-      window.google.accounts.id.renderButton(containerRef.current, {
-        type:  'standard',
-        theme: 'filled_black',
-        size:  'large',
-        width: '100%',
-        text:  'continue_with',
-        shape: 'rectangular',
-        logo_alignment: 'left',
-      })
+      const result = await signInWithPopup(auth, googleProvider)
+      const idToken = await result.user.getIdToken()
+      onToken(idToken)
     } catch (err) {
-      console.error('[GoogleSignInButton] render failed:', err)
-      setRenderFailed(false) // fall through to custom button
+      // User closed the popup — not a real error, just reset loading
+      if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
+        console.error('[GoogleSignInButton] sign-in failed:', err)
+      }
+    } finally {
+      setLoading(false)
     }
-  }, [sdkReady, onToken])
-
-  // If VITE_GOOGLE_CLIENT_ID is not set, render nothing (feature disabled)
-  if (!GOOGLE_CLIENT_ID) return null
-
-  // If GIS SDK timed out, show a plain fallback button
-  if (renderFailed) {
-    return (
-      <button
-        type='button'
-        className='auth-google-btn'
-        disabled={disabled}
-        onClick={() => alert('Google Sign-In is not available right now.')}
-      >
-        <GoogleIcon />
-        <span>{label}</span>
-      </button>
-    )
   }
 
-  // Wrap the GIS-rendered button so we can apply our own disabled overlay
   return (
-    <div
-      className={`auth-google-wrapper${disabled ? ' auth-google-disabled' : ''}`}
-      aria-disabled={disabled}
+    <button
+      type='button'
+      className='auth-google-btn'
+      disabled={disabled || loading}
+      onClick={handleClick}
+      aria-label={label}
     >
-      <div ref={containerRef} className='auth-google-inner' />
-      {disabled && <div className='auth-google-overlay' />}
-    </div>
+      <GoogleIcon />
+      <span>{loading ? 'Signing in…' : label}</span>
+    </button>
   )
 }
 

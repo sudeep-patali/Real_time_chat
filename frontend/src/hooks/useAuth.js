@@ -1,3 +1,11 @@
+/**
+ * useAuth.js  —  frontend/src/hooks/useAuth.js
+ *
+ * CHANGE: loginWithGoogle() now calls authService.firebaseAuth() instead
+ *         of authService.googleAuth().  The hook interface is identical so
+ *         no other component needs to change.
+ */
+
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
@@ -84,12 +92,14 @@ export function useAuth() {
     }
   }
 
-  // ── Google Sign-In ──────────────────────────────────────────────────────────
+  // ── Firebase Sign-In ────────────────────────────────────────────────────────
+  // The component (GoogleSignInButton) handles the Firebase popup and returns
+  // an ID token.  This hook exchanges that token with our backend.
   const loginWithGoogle = async (idToken) => {
     setLoading(true)
     setError(null)
     try {
-      const res = await authService.googleAuth(idToken)
+      const res = await authService.firebaseAuth(idToken)   // ← changed
       authStore.login(res.data.user, res.data.token)
       window.dispatchEvent(new CustomEvent('auth:user-changed'))
       navigate('/')

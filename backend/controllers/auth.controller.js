@@ -1,40 +1,45 @@
 /**
- * auth.controller.js
+ * auth.controller.js  —  backend/controllers/auth.controller.js
  *
  * Exports:
  *   sendSignupOtp     POST /auth/signup/send-otp
  *   verifySignupOtp   POST /auth/signup/verify-otp
  *   resendSignupOtp   POST /auth/signup/resend-otp
- *   googleAuth        POST /auth/google
+ *   firebaseAuth      POST /auth/firebase          ← replaces /auth/google
  *   login             POST /auth/login
  *   logout            POST /auth/logout
  *   refreshToken      POST /auth/refresh
+ *
+ * CHANGE from previous version:
+ *   • Removed: google-auth-library / OAuth2Client / GOOGLE_CLIENT_ID
+ *   • Added:   firebase-admin token verification via ../config/firebase
+ *   • The client now sends a Firebase ID token (works for Google, Email,
+ *     Phone, or any provider enabled in your Firebase project).
  */
 
-const bcrypt           = require('bcryptjs');
-const crypto           = require('crypto');
-const jwt              = require('jsonwebtoken');
-const { OAuth2Client } = require('google-auth-library');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const jwt    = require('jsonwebtoken');
 
-const User              = require('../models/User');
-const OtpVerification   = require('../models/OtpVerification');
-const UserSession       = require('../models/UserSession');
-const RefreshToken      = require('../models/RefreshToken');
+// ── Firebase Admin Auth (replaces google-auth-library) ──────────────────────
+const firebaseAuth = require('../config/firebase');
+
+const User            = require('../models/User');
+const OtpVerification = require('../models/OtpVerification');
+const UserSession     = require('../models/UserSession');
+const RefreshToken    = require('../models/RefreshToken');
 
 const { body, validationResult } = require('express-validator');
 const { generateAccessToken, generateRefreshToken } = require('../config/tokens');
-const { logAudit }  = require('../utils/audit');
+const { logAudit }    = require('../utils/audit');
 const { sendOtpEmail } = require('../utils/email');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const OTP_EXPIRY_MINS   = 10;                          // OTP valid for 10 minutes
-const OTP_MAX_ATTEMPTS  = 5;                           // max failed verifications
-const OTP_RESEND_COOLDOWN_SECS = 60;                   // min seconds between resends
-const OTP_MAX_RESENDS   = 5;                           // max resends per session
-const GOOGLE_CLIENT_ID  = process.env.GOOGLE_CLIENT_ID;
-
-const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+const OTP_EXPIRY_MINS         = 10;
+const OTP_MAX_ATTEMPTS        = 5;
+const OTP_RESEND_COOLDOWN_SECS = 60;
+const OTP_MAX_RESENDS         = 5;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -72,13 +77,10 @@ function setRefreshCookie(res, token) {
   });
 }
 
-/** Generate a cryptographically secure 6-digit OTP string */
 function generateOtp() {
-  // Use crypto.randomInt for uniform distribution with no modulo bias
   return String(crypto.randomInt(100000, 999999));
 }
 
-/** Issue tokens, create DB record, set cookie, return { user, token } */
 async function issueSession(res, user, req) {
   const accessToken  = generateAccessToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
@@ -108,13 +110,6 @@ async function issueSession(res, user, req) {
 
 // ── Controllers ───────────────────────────────────────────────────────────────
 
-/**
- * Step 1 of email signup:  validate form data, hash password, generate OTP,
- * persist a pending record, and send the OTP email.
- *
- * POST /api/auth/signup/send-otp
- * Body: { name, email, password }
- */
 exports.sendSignupOtp = async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -122,20 +117,16 @@ exports.sendSignupOtp = async (req, res, next) => {
 
     const { name, email, password } = req.body;
 
-    // Check if email is already registered
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(400).json({ message: 'Email already registered' });
     }
 
-    // Generate OTP
-    const otp     = generateOtp();
-    const otpHash = await bcrypt.hash(otp, 10);
+    const otp          = generateOtp();
+    const otpHash      = await bcrypt.hash(otp, 10);
     const passwordHash = await bcrypt.hash(password, 12);
+    const expiresAt    = new Date(Date.now() + OTP_EXPIRY_MINS * 60 * 1000);
 
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINS * 60 * 1000);
-
-    // Upsert: replace any existing pending verification for this email
     await OtpVerification.findOneAndDelete({ email: email.toLowerCase() });
     await OtpVerification.create({
       email:        email.toLowerCase(),
@@ -148,12 +139,10 @@ exports.sendSignupOtp = async (req, res, next) => {
       lastResendAt: null,
     });
 
-    // Send OTP email (non-blocking on failure to avoid leaking email existence)
     try {
       await sendOtpEmail(email, name.trim(), otp, OTP_EXPIRY_MINS);
     } catch (mailErr) {
       console.error('[OTP] Email send failed:', mailErr.message);
-      // Rollback the pending record so the user can retry
       await OtpVerification.findOneAndDelete({ email: email.toLowerCase() });
       return res.status(502).json({ message: 'Failed to send verification email. Please try again.' });
     }
@@ -168,12 +157,6 @@ exports.sendSignupOtp = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-/**
- * Step 2 of email signup: verify OTP and create the user account.
- *
- * POST /api/auth/signup/verify-otp
- * Body: { email, otp }
- */
 exports.verifySignupOtp = async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -188,24 +171,20 @@ exports.verifySignupOtp = async (req, res, next) => {
       return res.status(400).json({ message: 'No pending verification found. Please start signup again.' });
     }
 
-    // Check expiry
     if (pending.expiresAt < new Date()) {
       await OtpVerification.findByIdAndDelete(pending._id);
       return res.status(400).json({ message: 'Verification code has expired. Please start signup again.' });
     }
 
-    // Check attempt limit
     if (pending.attempts >= OTP_MAX_ATTEMPTS) {
       await OtpVerification.findByIdAndDelete(pending._id);
       return res.status(429).json({ message: 'Too many incorrect attempts. Please start signup again.' });
     }
 
-    // Verify OTP
     const isMatch = await pending.matchOtp(otp.trim());
     if (!isMatch) {
       pending.attempts += 1;
       await pending.save();
-
       const remaining = OTP_MAX_ATTEMPTS - pending.attempts;
       if (remaining <= 0) {
         await OtpVerification.findByIdAndDelete(pending._id);
@@ -217,24 +196,12 @@ exports.verifySignupOtp = async (req, res, next) => {
       });
     }
 
-    // OTP correct — double-check email isn't registered (race condition guard)
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       await OtpVerification.findByIdAndDelete(pending._id);
       return res.status(400).json({ message: 'Email already registered.' });
     }
 
-    // Create user account with pre-hashed password
-    // We bypass the pre-save hook by setting password directly to the hash.
-    // To do this cleanly we set a flag via a virtual so the hook can skip it.
-    const user = new User({
-      name:          pending.name,
-      email:         pending.email,
-      password:      '__SKIP_HASH__',   // placeholder — overwritten below
-      emailVerified: true,
-    });
-    // Directly assign the already-hashed password without triggering the hook
-    user.$locals.skipPasswordHash = true;
     await User.collection.insertOne({
       name:          pending.name,
       email:         pending.email,
@@ -246,7 +213,7 @@ exports.verifySignupOtp = async (req, res, next) => {
       role:          'member',
       isOnline:      false,
       lastSeen:      new Date(),
-      googleId:      null,
+      firebaseUid:   null,   // ← renamed from googleId; populated on first Firebase sign-in
       publicKey:     null,
       statusValue:   'available',
       customStatus:  '',
@@ -261,27 +228,14 @@ exports.verifySignupOtp = async (req, res, next) => {
     });
 
     const createdUser = await User.findOne({ email: pending.email });
-
-    // Clean up OTP record
     await OtpVerification.findByIdAndDelete(pending._id);
-
     await logAudit(createdUser._id, 'signup', { ip, device: parseUA(req.headers['user-agent'] || ''), severity: 'info' }).catch(() => {});
 
     const session = await issueSession(res, createdUser, req);
-
-    res.status(201).json({
-      ...session,
-      message: 'Account created successfully!',
-    });
+    res.status(201).json({ ...session, message: 'Account created successfully!' });
   } catch (err) { next(err); }
 };
 
-/**
- * Resend OTP (with cooldown and max resend limits).
- *
- * POST /api/auth/signup/resend-otp
- * Body: { email }
- */
 exports.resendSignupOtp = async (req, res, next) => {
   try {
     const { email } = req.body;
@@ -293,12 +247,10 @@ exports.resendSignupOtp = async (req, res, next) => {
       return res.status(400).json({ message: 'No pending verification found. Please start signup again.' });
     }
 
-    // Check resend limit
     if (pending.resendCount >= OTP_MAX_RESENDS) {
       return res.status(429).json({ message: 'Maximum resend limit reached. Please start signup again.' });
     }
 
-    // Check cooldown
     if (pending.lastResendAt) {
       const secondsSinceLast = (Date.now() - pending.lastResendAt.getTime()) / 1000;
       if (secondsSinceLast < OTP_RESEND_COOLDOWN_SECS) {
@@ -310,7 +262,6 @@ exports.resendSignupOtp = async (req, res, next) => {
       }
     }
 
-    // Generate fresh OTP and reset expiry
     const otp     = generateOtp();
     const otpHash = await bcrypt.hash(otp, 10);
 
@@ -329,65 +280,61 @@ exports.resendSignupOtp = async (req, res, next) => {
     }
 
     res.status(200).json({
-      message:    'A new verification code has been sent to your email.',
-      expiryMins: OTP_EXPIRY_MINS,
+      message:      'A new verification code has been sent to your email.',
+      expiryMins:   OTP_EXPIRY_MINS,
       cooldownSecs: OTP_RESEND_COOLDOWN_SECS,
     });
   } catch (err) { next(err); }
 };
 
 /**
- * Google Sign-In / Sign-Up.
- * Accepts a Google ID token, verifies it server-side, then either logs in
- * an existing user or creates a new one.
+ * Firebase Sign-In (replaces googleAuth).
  *
- * POST /api/auth/google
+ * Accepts a Firebase ID token from the client SDK.  Works with any provider
+ * enabled in your Firebase project (Google, Email link, Phone, etc.).
+ *
+ * POST /api/auth/firebase
  * Body: { idToken }
  */
-exports.googleAuth = async (req, res, next) => {
+exports.firebaseAuthHandler = async (req, res, next) => {
   try {
     const { idToken } = req.body;
-    if (!idToken) return res.status(400).json({ message: 'Google ID token is required.' });
+    if (!idToken) return res.status(400).json({ message: 'Firebase ID token is required.' });
 
-    // Verify the token with Google
-    let payload;
+    // ── Verify the token with Firebase Admin SDK ────────────────────────────
+    let decoded;
     try {
-      const ticket = await googleClient.verifyIdToken({
-        idToken,
-        audience: GOOGLE_CLIENT_ID,
-      });
-      payload = ticket.getPayload();
+      decoded = await firebaseAuth.verifyIdToken(idToken);
     } catch (err) {
-      console.error('[Google Auth] Token verification failed:', err.message);
-      return res.status(401).json({ message: 'Invalid Google token. Please try again.' });
+      console.error('[Firebase Auth] Token verification failed:', err.message);
+      return res.status(401).json({ message: 'Invalid Firebase token. Please try again.' });
     }
 
-    const { sub: googleId, email, name, picture, email_verified } = payload;
+    const { uid, email, name, picture, email_verified } = decoded;
 
     if (!email_verified) {
-      return res.status(400).json({ message: 'Google account email is not verified.' });
+      return res.status(400).json({ message: 'Firebase account email is not verified.' });
     }
 
     const ip = req.ip || req.connection?.remoteAddress || '';
-    let user = await User.findOne({ $or: [{ googleId }, { email: email.toLowerCase() }] });
+    let user = await User.findOne({ $or: [{ firebaseUid: uid }, { email: email.toLowerCase() }] });
     let isNew = false;
 
     if (!user) {
-      // New user — create account automatically
       user = await User.create({
-        name:          name,
+        name:          name || email.split('@')[0],
         email:         email.toLowerCase(),
         password:      null,
-        googleId,
+        firebaseUid:   uid,
         avatar:        picture || null,
         emailVerified: true,
       });
       isNew = true;
-      await logAudit(user._id, 'signup_google', { ip, severity: 'info' }).catch(() => {});
+      await logAudit(user._id, 'signup_firebase', { ip, severity: 'info' }).catch(() => {});
     } else {
-      // Existing user — link Google ID if not already linked
-      if (!user.googleId) {
-        user.googleId      = googleId;
+      // Link Firebase UID if not already linked
+      if (!user.firebaseUid) {
+        user.firebaseUid   = uid;
         user.emailVerified = true;
         if (!user.avatar && picture) user.avatar = picture;
         await user.save();
@@ -399,17 +346,11 @@ exports.googleAuth = async (req, res, next) => {
     res.status(isNew ? 201 : 200).json({
       ...session,
       isNewUser: isNew,
-      message:   isNew ? 'Account created with Google!' : 'Logged in with Google!',
+      message:   isNew ? 'Account created with Firebase!' : 'Logged in with Firebase!',
     });
   } catch (err) { next(err); }
 };
 
-/**
- * Email + password login.
- *
- * POST /api/auth/login
- * Body: { email, password }
- */
 exports.login = async (req, res, next) => {
   try {
     const errors = validationResult(req);
@@ -425,9 +366,9 @@ exports.login = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    // Google-only accounts cannot log in with a password
-    if (!user.password && user.googleId) {
-      return res.status(400).json({ message: 'This account uses Google Sign-In. Please continue with Google.' });
+    // Firebase-only accounts cannot log in with a password
+    if (!user.password && user.firebaseUid) {
+      return res.status(400).json({ message: 'This account uses Firebase Sign-In. Please continue with that method.' });
     }
 
     const session = await issueSession(res, user, req);
@@ -435,11 +376,6 @@ exports.login = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-/**
- * Logout — revoke refresh token.
- *
- * POST /api/auth/logout
- */
 exports.logout = async (req, res, next) => {
   try {
     const token = req.cookies?.refreshToken;
@@ -460,11 +396,6 @@ exports.logout = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-/**
- * Rotate refresh token and issue a new access token.
- *
- * POST /api/auth/refresh
- */
 exports.refreshToken = async (req, res, next) => {
   try {
     const token = req.cookies?.refreshToken;
@@ -482,7 +413,6 @@ exports.refreshToken = async (req, res, next) => {
       return res.status(401).json({ message: 'Refresh token expired or revoked' });
     }
 
-    // Rotate
     stored.revoked = true;
     await stored.save();
 

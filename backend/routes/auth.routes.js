@@ -1,3 +1,10 @@
+/**
+ * auth.routes.js  —  backend/routes/auth.routes.js
+ *
+ * CHANGE: /auth/google  →  /auth/firebase
+ *         googleAuth    →  firebaseAuthHandler
+ */
+
 const router  = require('express').Router();
 const { body, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
@@ -6,7 +13,7 @@ const {
   sendSignupOtp,
   verifySignupOtp,
   resendSignupOtp,
-  googleAuth,
+  firebaseAuthHandler,   // ← renamed from googleAuth
   login,
   logout,
   refreshToken,
@@ -43,18 +50,16 @@ const loginRules = [
   body('password').notEmpty().withMessage('Password is required'),
 ];
 
-// ── Rate limiters specific to auth endpoints ─────────────────────────────────
+// ── Rate limiters ─────────────────────────────────────────────────────────────
 
-/** Limit OTP send requests: 5 per hour per IP */
 const otpSendLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
+  windowMs: 60 * 60 * 1000,
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Too many OTP requests. Please try again in an hour.' },
 });
 
-/** Limit OTP resend: 10 per hour per IP */
 const otpResendLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
@@ -63,7 +68,6 @@ const otpResendLimiter = rateLimit({
   message: { message: 'Too many resend requests. Please try again later.' },
 });
 
-/** Limit OTP verification: 20 per 15 min per IP (further guarded per-record in controller) */
 const otpVerifyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -72,16 +76,15 @@ const otpVerifyLimiter = rateLimit({
   message: { message: 'Too many verification attempts. Please try again later.' },
 });
 
-/** Google auth: 20 per 15 min per IP */
-const googleLimiter = rateLimit({
+/** Firebase auth limiter — 20 per 15 min per IP */
+const firebaseLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: 'Too many Google auth requests. Please try again later.' },
+  message: { message: 'Too many Firebase auth requests. Please try again later.' },
 });
 
-/** Login limiter (counts only failures via skipSuccessfulRequests) */
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -94,12 +97,12 @@ const loginLimiter = rateLimit({
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 // Email OTP signup flow
-router.post('/signup/send-otp',    otpSendLimiter,   sendOtpRules,   validate, sendSignupOtp);
-router.post('/signup/verify-otp',  otpVerifyLimiter, verifyOtpRules, validate, verifySignupOtp);
-router.post('/signup/resend-otp',  otpResendLimiter,                           resendSignupOtp);
+router.post('/signup/send-otp',   otpSendLimiter,   sendOtpRules,   validate, sendSignupOtp);
+router.post('/signup/verify-otp', otpVerifyLimiter, verifyOtpRules, validate, verifySignupOtp);
+router.post('/signup/resend-otp', otpResendLimiter,                           resendSignupOtp);
 
-// Google OAuth
-router.post('/google', googleLimiter, googleAuth);
+// Firebase Sign-In (replaces /google)
+router.post('/firebase', firebaseLimiter, firebaseAuthHandler);
 
 // Email + password login
 router.post('/login',           loginLimiter, loginRules, validate, login);

@@ -1,3 +1,11 @@
+/**
+ * User.js  —  backend/models/User.js
+ *
+ * CHANGE: googleId  →  firebaseUid
+ *   Firebase UID works for Google, Email link, Phone, or any other provider
+ *   enabled in your Firebase project.
+ */
+
 const mongoose = require('mongoose');
 const bcrypt   = require('bcryptjs');
 
@@ -5,7 +13,7 @@ const userSchema = new mongoose.Schema({
   name:         { type: String, required: true, trim: true },
   email:        { type: String, required: true, unique: true, lowercase: true },
 
-  // password is optional for Google-only accounts
+  // password is null for Firebase-only accounts
   password:     { type: String, default: null, minlength: 6 },
 
   avatar:       { type: String, default: null },
@@ -16,17 +24,15 @@ const userSchema = new mongoose.Schema({
   lastSeen:     { type: Date, default: Date.now },
 
   // ── Email verification ──────────────────────────────────────────────────
-  // true once the user's email has been confirmed via OTP (or via Google OAuth,
-  // where the email is already verified by Google).
   emailVerified: { type: Boolean, default: false },
 
-  // ── Google OAuth ────────────────────────────────────────────────────────
-  // Populated when the account was created or linked via Google Sign-In.
-  // null for email/password accounts.
-  googleId:     { type: String, default: null, sparse: true },
+  // ── Firebase Auth ────────────────────────────────────────────────────────
+  // Populated when the account was created or linked via Firebase Sign-In.
+  // Works with any Firebase provider (Google, Email link, Phone, etc.).
+  // null for plain email/password accounts that have never used Firebase.
+  firebaseUid:  { type: String, default: null, sparse: true },
 
   // RSA public key (PEM) for E2E encryption.
-  // The private key is stored only in the user's browser (IndexedDB) and never sent to the server.
   publicKey:    { type: String, default: null },
 
   // Status
@@ -97,7 +103,7 @@ const userSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-// Hash password before saving (skip if not modified or null/google account)
+// Hash password before saving (skip if not modified or null/firebase account)
 userSchema.pre('save', async function() {
   if (!this.isModified('password') || !this.password) return;
   this.password = await bcrypt.hash(this.password, 12);

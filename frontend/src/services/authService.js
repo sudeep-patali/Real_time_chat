@@ -1,3 +1,9 @@
+/**
+ * authService.js  —  frontend/src/services/authService.js
+ *
+ * CHANGE: googleAuth()  →  firebaseAuth()   (hits /auth/firebase instead of /auth/google)
+ */
+
 import api from '../config/api.config'
 
 // ── Email + Password login ────────────────────────────────────────────────────
@@ -18,11 +24,11 @@ export const verifySignupOtp = (email, otp) =>
 export const resendSignupOtp = (email) =>
   api.post('/auth/signup/resend-otp', { email })
 
-// ── Google OAuth ──────────────────────────────────────────────────────────────
+// ── Firebase Auth ─────────────────────────────────────────────────────────────
 
-/** Exchange a Google ID token for a session */
-export const googleAuth = (idToken) =>
-  api.post('/auth/google', { idToken })
+/** Exchange a Firebase ID token for a session */
+export const firebaseAuth = (idToken) =>
+  api.post('/auth/firebase', { idToken })
 
 // ── Session ───────────────────────────────────────────────────────────────────
 export const logout = () =>
