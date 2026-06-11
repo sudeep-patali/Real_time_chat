@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Paperclip, Smile, Mic, Send, X, ImageIcon, FileText } from 'lucide-react'
 import { useSocket } from '../hooks/useSocket'
 import { useAuth }   from '../hooks/useAuth'
+import { useSettingsStore } from '../store/settingsStore'
 import { TYPING_START, TYPING_STOP, GROUP_TYPING_START, GROUP_TYPING_STOP } from '../socket/socketEvents'
 import FileUpload from './FileUpload'
 import EmojiPicker from './EmojiPicker'
@@ -17,6 +18,7 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
   const [showEmoji,  setShowEmoji]  = useState(false)
   const { emit }                    = useSocket()
   const { currentUser }             = useAuth()
+  const privacySettings             = useSettingsStore(state => state.settings.privacy)
   const typingTimer                 = useRef(null)
   const isTypingRef                 = useRef(false)
   const inputRef                    = useRef(null)
@@ -52,12 +54,16 @@ function MessageInput({ onSend, roomId, disabled = false, isGroup = false, reply
   }, [showUploadPicker])
 
   const emitTypingStart = () => {
+    // Don't emit typing events if user has disabled typing indicator
+    if (privacySettings?.typingIndicator === false) return
     if (isTypingRef.current) return
     isTypingRef.current = true
     emit(isGroup ? GROUP_TYPING_START : TYPING_START, { roomId })
   }
 
   const emitTypingStop = () => {
+    // If typingIndicator is off we never sent a start, so nothing to stop
+    if (privacySettings?.typingIndicator === false) return
     if (!isTypingRef.current) return
     isTypingRef.current = false
     emit(isGroup ? GROUP_TYPING_STOP : TYPING_STOP, { roomId })

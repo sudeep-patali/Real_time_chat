@@ -3,6 +3,7 @@ import { useSocket } from './useSocket'
 import { useChatStore } from '../store/chatStore'
 import { useNotificationStore } from '../store/notificationStore'
 import { useAuthStore } from '../store/authStore'
+import { useSettingsStore } from '../store/settingsStore'
 import { useGroupInviteStore } from '../store/groupInviteStore'
 import * as groupService from '../services/groupService'
 import * as roomService from '../services/roomService'
@@ -28,6 +29,8 @@ import {
 export function useGlobalSocket() {
   const { on, off }       = useSocket()
   const currentUser       = useAuthStore(state => state.currentUser)
+  const setUser           = useAuthStore(state => state.setUser)
+  const updateSection     = useSettingsStore(state => state.updateSection)
   const updateUserOnline  = useChatStore(state => state.updateUserOnline)
   const updateUserProfile = useChatStore(state => state.updateUserProfile)
   const updateUserPrivacyInRooms = useChatStore(state => state.updateUserPrivacyInRooms)
@@ -221,14 +224,38 @@ export function useGlobalSocket() {
 
     // When a user changes their privacy settings, re-fetch their filtered profile
     // so sidebar, chat headers, find-people all reflect the new rules instantly.
-    const handlePrivacyUpdated = ({ userId }) => {
+    const handlePrivacyUpdated = ({ userId, privacy }) => {
       if (!userId) return
-      // Re-apply cached profile with potentially new visibility rules.
-      // The server will have already emitted a privacy-aware user_profile_updated,
-      // so we mostly need to handle the case where onlineStatus = 'nobody' clears
-      // the indicator, or avatar becomes null etc.
-      // Clear the visible fields in room participants for this user (non-self).
-      // The user_profile_updated handler above will receive the filtered version.
+
+      // If it's our own privacy update, sync the settings store and authStore
+      // so the UI reflects the new toggles immediately without a page refresh.
+      const myId = currentUser?.id?.toString() || currentUser?._id?.toString()
+      if (userId === myId && privacy) {
+        // Update settingsStore.settings.privacy so the toggles in PrivacySection stay in sync
+        updateSection('privacy', {
+          readReceipts:    privacy.readReceipts    ?? true,
+          typingIndicator: privacy.typingIndicator ?? true,
+          lastSeen:        privacy.lastSeen        ?? 'everyone',
+          onlineStatus:    privacy.onlineStatus    ?? 'everyone',
+          addToGroups:     privacy.addToGroups     ?? 'everyone',
+        })
+        // Also update currentUser.privacy so hooks that read from authStore are correct
+        if (currentUser) {
+          setUser({ ...currentUser, privacy: { ...(currentUser.privacy || {}), ...privacy } })
+        }
+      }
+
+      // For other users: re-apply cached profile with potentially new visibility rules.
+      // The server also emits a privacy-aware user_profile_updated, so the
+      // updateUserPrivacyInRooms call below ensures the sidebar / chat header
+      // clears or restores online status / lastSeen in real time.
+      if (userId !== myId && privacy) {
+        updateUserPrivacyInRooms(userId, {
+          // If the other user hid their online status from us, clear it
+          ...(privacy.onlineStatus === 'nobody' ? { isOnline: null } : {}),
+          ...(privacy.lastSeen     === 'nobody' ? { lastSeen: null } : {}),
+        })
+      }
     }
 
     on(USER_ONLINE,                handleUserOnline)
@@ -266,7 +293,7 @@ export function useGlobalSocket() {
       off(PRIVACY_UPDATED,           handlePrivacyUpdated)
       off(GROUP_DELETED,             handleGroupDeleted)
     }
-  }, [currentUser, activeRoomId])
+  }, [currentUser, activeRoomId, setUser, updateSection])
 }
 
 function normalizeRoomBasic(room, currentUserId) {

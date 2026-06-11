@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useChatStore } from '../store/chatStore'
 import { useRooms } from '../hooks/useRooms'
 import { useMobileNav } from '../hooks/useMobileNav'
+import { useSocket } from '../hooks/useSocket'
 import * as userService from '../services/userService'
 import * as roomService from '../services/roomService'
 import Navbar from '../components/Navbar'
@@ -49,6 +50,10 @@ function Chat() {
     theyBlockedMe: false,
     loaded: false
   })
+
+  // ── Other user's privacy settings (for read-receipt tick display) ──
+  const [otherUserPrivacy, setOtherUserPrivacy] = useState(null)
+  const { on, off } = useSocket()
 
   // ── Room loading state — prevents "Chat" flash while fetching ─
   const [roomLoading, setRoomLoading] = useState(false)
@@ -191,10 +196,24 @@ function Chat() {
         theyBlockedMe: !!user.hasBlockedMe,
         loaded: true
       })
+      // Capture their privacy settings so we can render ticks correctly
+      if (user.privacy) setOtherUserPrivacy(user.privacy)
     } catch {
       setBlockStatus({ iBlockedThem: false, theyBlockedMe: false, loaded: true })
     }
   }, [otherUserId, room?.isGroup])
+
+  // Keep otherUserPrivacy in sync when they change their privacy settings live
+  useEffect(() => {
+    if (!otherUserId) return
+    const handlePrivacyUpdated = ({ userId, privacy }) => {
+      if (userId?.toString() === otherUserId && privacy) {
+        setOtherUserPrivacy(prev => ({ ...(prev || {}), ...privacy }))
+      }
+    }
+    on('privacy_updated', handlePrivacyUpdated)
+    return () => off('privacy_updated', handlePrivacyUpdated)
+  }, [otherUserId, on, off])
 
   useEffect(() => {
     setBlockStatus(s => ({ ...s, loaded: false }))
@@ -419,6 +438,7 @@ function Chat() {
             onDeleteMessage={deleteMessage}
             onReply={setReplyTo}
             onScrollToMessage={handleScrollToMessage}
+            otherUserPrivacy={otherUserPrivacy || otherUser?.privacy || null}
           />
 
           {/* ── Input / blocked / pending banners ── */}

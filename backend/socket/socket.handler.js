@@ -462,6 +462,12 @@ module.exports = (io) => {
         const room = await Room.findById(roomId).select('isGroup participantIds')
         if (!room || room.isGroup) return
 
+        // Always update DB so messages are marked read for the reader's own view.
+        // Only suppress the real-time 'message-read' event to the sender when
+        // the reader has disabled read receipts.
+        const readerUser = await User.findById(socket.user._id).select('privacy')
+        const readReceiptsEnabled = readerUser?.privacy?.readReceipts !== false
+
         const updated = await Message.updateMany(
           {
             roomId,
@@ -472,7 +478,8 @@ module.exports = (io) => {
           { $set: { readAt: now, deliveredAt: now }, $addToSet: { readBy: socket.user._id } }
         )
 
-        if (updated.modifiedCount > 0) {
+        // Only notify sender if read receipts are enabled for this user
+        if (updated.modifiedCount > 0 && readReceiptsEnabled) {
           const lastMsg = await Message.findOne({
             roomId,
             senderId: { $ne: socket.user._id },
@@ -545,6 +552,12 @@ module.exports = (io) => {
         const userId = socket.user._id
         const now    = new Date()
 
+        // Check reader's readReceipts privacy setting.
+        // DB is always updated so the reader's own view is correct;
+        // but we only broadcast to senders if read receipts are enabled.
+        const readerUser = await User.findById(userId).select('privacy')
+        const readReceiptsEnabled = readerUser?.privacy?.readReceipts !== false
+
         const msgs = await Message.find({
           roomId,
           senderId:  { $ne: userId },
@@ -572,6 +585,9 @@ module.exports = (io) => {
             })
           }
 
+          // Only notify the sender if read receipts are enabled for this user
+          if (!readReceiptsEnabled) continue
+
           const updatedMsg = await Message.findById(msg._id).populate('roomId', 'isGroup participantIds')
           const newStatus  = computeStatus(updatedMsg, room, updatedMsg.senderId)
 
@@ -596,6 +612,9 @@ module.exports = (io) => {
       try {
         const room = await Room.findById(roomId).select('participantIds isGroup')
         if (!room || room.isGroup) return
+        // Respect typingIndicator privacy: don't emit if the typer disabled it
+        const typerUser = await User.findById(socket.user._id).select('privacy')
+        if (typerUser?.privacy?.typingIndicator === false) return
         const otherId = room.participantIds.find(p => p.toString() !== socket.user._id.toString())
         if (otherId) {
           const blocked = await isBlockedBetween(socket.user._id, otherId)
@@ -611,6 +630,9 @@ module.exports = (io) => {
       try {
         const room = await Room.findById(roomId).select('participantIds isGroup')
         if (!room || room.isGroup) return
+        // If typingIndicator is off we never sent typing-start, so no need to send stop either
+        const typerUser = await User.findById(socket.user._id).select('privacy')
+        if (typerUser?.privacy?.typingIndicator === false) return
         const otherId = room.participantIds.find(p => p.toString() !== socket.user._id.toString())
         if (otherId) {
           const blocked = await isBlockedBetween(socket.user._id, otherId)
@@ -627,6 +649,9 @@ module.exports = (io) => {
       try {
         const room = await Room.findById(roomId).select('participantIds isGroup')
         if (!room || !room.isGroup) return
+        // Respect typingIndicator privacy setting
+        const typerUser = await User.findById(socket.user._id).select('privacy')
+        if (typerUser?.privacy?.typingIndicator === false) return
         socket.to(roomId).emit('group-typing-start', { userId: socket.user._id.toString(), userName: socket.user.name, roomId })
       } catch (err) {
         socket.to(roomId).emit('group-typing-start', { userId: socket.user._id.toString(), userName: socket.user.name, roomId })
@@ -637,6 +662,9 @@ module.exports = (io) => {
       try {
         const room = await Room.findById(roomId).select('participantIds isGroup')
         if (!room || !room.isGroup) return
+        // If typingIndicator is off we never sent group-typing-start, so skip stop too
+        const typerUser = await User.findById(socket.user._id).select('privacy')
+        if (typerUser?.privacy?.typingIndicator === false) return
         socket.to(roomId).emit('group-typing-stop', { userId: socket.user._id.toString(), roomId })
       } catch (err) {
         socket.to(roomId).emit('group-typing-stop', { userId: socket.user._id.toString(), roomId })
@@ -646,6 +674,9 @@ module.exports = (io) => {
     // ── Legacy typing (backwards compat) ─────────────────────────────────────
     socket.on('user_typing', async ({ roomId, isTyping }) => {
       try {
+        // Respect typingIndicator privacy setting
+        const typerUser = await User.findById(socket.user._id).select('privacy')
+        if (typerUser?.privacy?.typingIndicator === false) return
         const room = await Room.findById(roomId).select('participantIds isGroup')
         if (!room || room.isGroup) {
           socket.to(roomId).emit('user_typing', { userId: socket.user._id.toString(), roomId, isTyping })
@@ -664,6 +695,8 @@ module.exports = (io) => {
 
     socket.on('user_stop_typing', async ({ roomId }) => {
       try {
+        const typerUser = await User.findById(socket.user._id).select('privacy')
+        if (typerUser?.privacy?.typingIndicator === false) return
         const room = await Room.findById(roomId).select('participantIds isGroup')
         if (!room || room.isGroup) {
           socket.to(roomId).emit('user_stop_typing', { userId: socket.user._id.toString(), roomId })

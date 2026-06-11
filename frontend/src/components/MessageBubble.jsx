@@ -200,7 +200,7 @@ function InfoRow({ label, value }) {
 }
 
 // ── MessageBubble ────────────────────────────────────────────────────────────
-function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false, isMatch = false, onEdit, onDelete, onReply, onScrollToMessage }) {
+function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false, isMatch = false, onEdit, onDelete, onReply, onScrollToMessage, recipientReadReceipts = true }) {
   const { currentUser }             = useAuth()
   const [menuOpen,      setMenuOpen]      = useState(false)
   const [editing,       setEditing]       = useState(false)
@@ -542,7 +542,12 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
             <span className='bubble-time'>{formatTime(message.timestamp)}</span>
             {isOwn && (
               <span className='bubble-tick-wrap'>
-                <StatusTick status={message.status || 'sent'} />
+                {/* Cap tick at 'delivered' if recipient has disabled read receipts */}
+                <StatusTick status={
+                  !recipientReadReceipts && message.status === 'read'
+                    ? 'delivered'
+                    : (message.status || 'sent')
+                } />
               </span>
             )}
           </span>

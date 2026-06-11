@@ -12,7 +12,8 @@ import {
   MSG_DELIVERED, MSG_READ, GROUP_MSG_DELIVERED, GROUP_MSG_READ,
   GROUP_MESSAGE_READ, MESSAGE_INFO_REQ, MESSAGE_INFO_RES,
 } from '../socket/socketEvents'
-import { useAuthStore }   from '../store/authStore'
+import { useAuthStore }      from '../store/authStore'
+import { useSettingsStore }  from '../store/settingsStore'
 import { encryptMessage, decryptMessage, decryptRoomKey } from '../crypto/keyManager'
 
 // ── Normalize raw server/socket message to a flat shape ──────────────────────
@@ -105,6 +106,11 @@ export function useChat(roomId) {
   const clearUnread        = useNotificationStore(state => state.clearUnread)
   const addNotification    = useNotificationStore(state => state.addNotification)
   const currentUser        = useAuthStore(state => state.currentUser)
+  const privacySettings    = useSettingsStore(state => state.settings.privacy)
+  // Keep a ref so closures inside the [roomId] effect always read the latest
+  // privacy settings without needing to re-subscribe/re-register listeners.
+  const privacyRef         = useRef(privacySettings)
+  useEffect(() => { privacyRef.current = privacySettings }, [privacySettings])
   const { emit, on, off }  = useSocket()
 
   const typingTimers = useRef({})
@@ -153,10 +159,15 @@ export function useChat(roomId) {
 
     messageService.markRead(roomId)
       .then(() => {
-        if (isGroup) {
-          emit(GROUP_MESSAGE_READ, { roomId })
-        } else {
-          emit(MESSAGE_READ, { roomId })
+        // Only emit read receipt socket event if user has enabled read receipts.
+        // Use privacyRef so this always reflects the current toggle value,
+        // not the stale value captured when the effect first ran.
+        if (privacyRef.current?.readReceipts !== false) {
+          if (isGroup) {
+            emit(GROUP_MESSAGE_READ, { roomId })
+          } else {
+            emit(MESSAGE_READ, { roomId })
+          }
         }
       })
       .catch(() => {})
@@ -182,10 +193,13 @@ export function useChat(roomId) {
         addMessage(msg)
         updateLastMessage(msg.roomId, msg)
         messageService.markRead(roomId).catch(() => {})
-        if (isGroup) {
-          emit(GROUP_MESSAGE_READ, { roomId })
-        } else {
-          emit(MESSAGE_READ, { roomId })
+        // Only emit read receipt event if user has enabled read receipts
+        if (privacyRef.current?.readReceipts !== false) {
+          if (isGroup) {
+            emit(GROUP_MESSAGE_READ, { roomId })
+          } else {
+            emit(MESSAGE_READ, { roomId })
+          }
         }
       }
     }

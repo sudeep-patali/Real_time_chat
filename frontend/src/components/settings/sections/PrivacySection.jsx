@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useSettingsStore } from '../../../store/settingsStore'
 import { useAuthStore } from '../../../store/authStore'
 import { useNotificationStore } from '../../../store/notificationStore'
+import { useSocket } from '../../../hooks/useSocket'
+import { useChatStore } from '../../../store/chatStore'
 import { changePassword } from '../../../services/settingsService'
 import { updatePrivacy, getBlockedUsers, blockUser } from '../../../services/userService'
 import Toggle from '../Toggle'
@@ -18,6 +20,9 @@ function PrivacySection() {
   const addAlert = useNotificationStore(s => s.addAlert)
   const setUser = useAuthStore(state => state.setUser)
   const currentUser = useAuthStore(state => state.currentUser)
+  const { emit } = useSocket()
+  const activeRoomId = useChatStore(state => state.activeRoomId)
+  const rooms = useChatStore(state => state.rooms)
   const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' })
   const [pwLoading, setPwLoading] = useState(false)
   const [blocked, setBlocked] = useState([])
@@ -53,6 +58,18 @@ function PrivacySection() {
       } else if (currentUser) {
         setUser({ ...currentUser, privacy: { ...(currentUser.privacy || {}), ...newPrivacy } })
       }
+
+      // When read receipts are turned ON, immediately emit message_read for the
+      // active room so senders get blue ticks right away — no refresh needed.
+      if (patch.readReceipts === true && activeRoomId) {
+        const activeRoom = rooms.find(r => (r.id || r._id) === activeRoomId)
+        if (activeRoom?.isGroup) {
+          emit('group-message-read', { roomId: activeRoomId })
+        } else {
+          emit('message_read', { roomId: activeRoomId })
+        }
+      }
+
       addAlert({ message: 'Privacy settings saved', type: 'success' })
     } catch {
       // Roll back the optimistic update
