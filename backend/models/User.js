@@ -4,13 +4,26 @@ const bcrypt   = require('bcryptjs');
 const userSchema = new mongoose.Schema({
   name:         { type: String, required: true, trim: true },
   email:        { type: String, required: true, unique: true, lowercase: true },
-  password:     { type: String, required: true, minlength: 6 },
+
+  // password is optional for Google-only accounts
+  password:     { type: String, default: null, minlength: 6 },
+
   avatar:       { type: String, default: null },
   bio:          { type: String, default: '' },
   username:     { type: String, default: '', trim: true },
   role:         { type: String, enum: ['admin','member'], default: 'member' },
   isOnline:     { type: Boolean, default: false },
   lastSeen:     { type: Date, default: Date.now },
+
+  // ── Email verification ──────────────────────────────────────────────────
+  // true once the user's email has been confirmed via OTP (or via Google OAuth,
+  // where the email is already verified by Google).
+  emailVerified: { type: Boolean, default: false },
+
+  // ── Google OAuth ────────────────────────────────────────────────────────
+  // Populated when the account was created or linked via Google Sign-In.
+  // null for email/password accounts.
+  googleId:     { type: String, default: null, sparse: true },
 
   // RSA public key (PEM) for E2E encryption.
   // The private key is stored only in the user's browser (IndexedDB) and never sent to the server.
@@ -71,9 +84,6 @@ const userSchema = new mongoose.Schema({
       keyboardShortcuts: { type: Boolean, default: true },
       screenReader:      { type: Boolean, default: false },
     },
-    // FIX: Added appearance subdocument so font size, bubble size, and compact
-    // mode are persisted to the database and survive cross-device login.
-    // Previously these settings only lived in localStorage.
     appearance: {
       fontSize:    { type: String, enum: ['small', 'medium', 'large'], default: 'medium' },
       bubbleSize:  { type: String, enum: ['compact', 'normal', 'large'], default: 'normal' },
@@ -87,13 +97,15 @@ const userSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
+// Hash password before saving (skip if not modified or null/google account)
 userSchema.pre('save', async function() {
-  if (!this.isModified('password')) return;
+  if (!this.isModified('password') || !this.password) return;
   this.password = await bcrypt.hash(this.password, 12);
 });
 
 userSchema.methods.matchPassword = async function(entered) {
-  return await bcrypt.compare(entered, this.password);
+  if (!this.password) return false;
+  return bcrypt.compare(entered, this.password);
 };
 
 module.exports = mongoose.model('User', userSchema);

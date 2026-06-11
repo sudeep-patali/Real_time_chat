@@ -1,40 +1,36 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react'
-import { useAuth } from '../hooks/useAuth'
-import { validateLogin } from '../utils/validateForm'
+import { useAuth }          from '../hooks/useAuth'
+import { validateLogin }    from '../utils/validateForm'
+import GoogleSignInButton   from '../components/GoogleSignInButton'
 import '../styles/auth.css'
 
 const SAVED_EMAILS_KEY = 'wheeltrix_saved_emails'
 
 function getSavedEmails() {
-  try {
-    return JSON.parse(localStorage.getItem(SAVED_EMAILS_KEY)) || []
-  } catch {
-    return []
-  }
+  try { return JSON.parse(localStorage.getItem(SAVED_EMAILS_KEY)) || [] }
+  catch { return [] }
 }
-
 function saveEmail(email) {
   if (!email) return
-  const existing = getSavedEmails()
-  const updated = [email, ...existing.filter(e => e !== email)].slice(0, 5)
+  const updated = [email, ...getSavedEmails().filter(e => e !== email)].slice(0, 5)
   localStorage.setItem(SAVED_EMAILS_KEY, JSON.stringify(updated))
 }
 
 function Login() {
-  const [email, setEmail]             = useState('')
-  const [password, setPassword]       = useState('')
-  const [fieldErrors, setFieldErrors] = useState({})
-  const [showPassword, setShowPassword] = useState(false)
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [suggestions, setSuggestions]   = useState([])
+  const [email,         setEmail]         = useState('')
+  const [password,      setPassword]      = useState('')
+  const [fieldErrors,   setFieldErrors]   = useState({})
+  const [showPassword,  setShowPassword]  = useState(false)
+  const [showDropdown,  setShowDropdown]  = useState(false)
+  const [suggestions,   setSuggestions]   = useState([])
+  const [googleError,   setGoogleError]   = useState(null)
 
   const emailRef    = useRef(null)
   const dropdownRef = useRef(null)
-  const { login, loading, error } = useAuth()
+  const { login, loginWithGoogle, loading, error, setError } = useAuth()
 
-  /* filter suggestions whenever email value changes */
   useEffect(() => {
     const saved = getSavedEmails()
     setSuggestions(
@@ -44,20 +40,17 @@ function Login() {
     )
   }, [email])
 
-  /* close dropdown on outside click */
   useEffect(() => {
     const onOutside = (e) => {
       if (
         emailRef.current    && !emailRef.current.contains(e.target) &&
         dropdownRef.current && !dropdownRef.current.contains(e.target)
-      ) {
-        setShowDropdown(false)
-      }
+      ) setShowDropdown(false)
     }
-    document.addEventListener('mousedown', onOutside)
+    document.addEventListener('mousedown',  onOutside)
     document.addEventListener('touchstart', onOutside)
     return () => {
-      document.removeEventListener('mousedown', onOutside)
+      document.removeEventListener('mousedown',  onOutside)
       document.removeEventListener('touchstart', onOutside)
     }
   }, [])
@@ -65,11 +58,9 @@ function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     const errors = validateLogin({ email, password })
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors)
-      return
-    }
+    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return }
     setFieldErrors({})
+    setGoogleError(null)
     saveEmail(email)
     setShowDropdown(false)
     await login(email, password)
@@ -78,11 +69,18 @@ function Login() {
   const handleSelect = (val) => {
     setEmail(val)
     setShowDropdown(false)
-    /* move focus to password after picking an email */
     document.getElementById('login-password')?.focus()
   }
 
+  const handleGoogleToken = async (idToken) => {
+    setGoogleError(null)
+    setError(null)
+    const result = await loginWithGoogle(idToken)
+    if (!result.success) setGoogleError(result.message)
+  }
+
   const isOpen = showDropdown && suggestions.length > 0
+  const displayError = error || googleError
 
   return (
     <div className='auth-shell'>
@@ -94,10 +92,10 @@ function Login() {
           <p className='auth-subtitle'>Connect. Message. Collaborate.</p>
         </div>
 
-        {error && (
+        {displayError && (
           <div className='auth-error-banner'>
             <AlertCircle size={14} />
-            <span>{error}</span>
+            <span>{displayError}</span>
           </div>
         )}
 
@@ -106,8 +104,6 @@ function Login() {
           {/* ── Email ── */}
           <div className='auth-field'>
             <label htmlFor='login-email' className='auth-label'>Email</label>
-
-            {/* wrapper is the anchor for the dropdown */}
             <div className='auth-field-wrap'>
               <div className='auth-field-inner'>
                 <span className='auth-field-icon'><Mail size={16} /></span>
@@ -124,8 +120,6 @@ function Login() {
                   onFocus={() => setShowDropdown(true)}
                 />
               </div>
-
-              {/* dropdown sits inside .auth-field-wrap so it inherits the same width */}
               {isOpen && (
                 <ul ref={dropdownRef} className='auth-dropdown'>
                   {suggestions.map(s => (
@@ -142,10 +136,7 @@ function Login() {
                 </ul>
               )}
             </div>
-
-            {fieldErrors.email && (
-              <span className='auth-field-error'>{fieldErrors.email}</span>
-            )}
+            {fieldErrors.email && <span className='auth-field-error'>{fieldErrors.email}</span>}
           </div>
 
           {/* ── Password ── */}
@@ -173,9 +164,7 @@ function Login() {
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            {fieldErrors.password && (
-              <span className='auth-field-error'>{fieldErrors.password}</span>
-            )}
+            {fieldErrors.password && <span className='auth-field-error'>{fieldErrors.password}</span>}
           </div>
 
           <button type='submit' className='auth-btn' disabled={loading}>
@@ -183,6 +172,15 @@ function Login() {
           </button>
 
         </form>
+
+        {/* ── Divider + Google ── */}
+        <div className='auth-divider-row'>
+          <span className='auth-divider-line' />
+          <span className='auth-divider-text'>or</span>
+          <span className='auth-divider-line' />
+        </div>
+
+        <GoogleSignInButton onToken={handleGoogleToken} disabled={loading} />
 
         <p className='auth-footer'>
           Don&apos;t have an account?{' '}

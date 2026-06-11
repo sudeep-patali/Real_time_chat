@@ -1,4 +1,4 @@
-/* ── Auth Pages: Login & Signup ── */
+/* ── Auth Pages: Login, Signup, OTP ── */
 
 .auth-shell {
   min-height: 100vh;
@@ -18,14 +18,28 @@
   border-radius: 20px;
   padding: 40px 36px 36px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.2);
-  /*
-    FIX: explicit overflow: visible ensures the custom email dropdown
-    (.auth-dropdown) can spill outside the card boundaries on small
-    screens without being clipped. Many browsers default to visible
-    but some mobile WebViews compute a stacking context that clips
-    absolutely-positioned children.
-  */
   overflow: visible;
+  position: relative;
+}
+
+/* ── Back button (OTP screen) ── */
+.auth-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 16px;
+  transition: background 0.15s, color 0.15s;
+}
+.auth-back-btn:hover {
+  background: var(--color-btn-ghost-hover);
+  color: var(--color-text);
 }
 
 /* ── Logo ── */
@@ -72,22 +86,13 @@
   gap: 16px;
 }
 
-/* 
-  FIX: gap between consecutive .auth-field elements inside a <form>.
-  Previously the non-form fields used .auth-form (a flex container) for
-  spacing; now everything is inside one <form>. The margin-bottom below
-  replicates that 16px gap.
-*/
 .auth-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-bottom: 16px;
 }
-
-.auth-field:last-of-type {
-  margin-bottom: 0;
-}
+.auth-field:last-of-type { margin-bottom: 0; }
 
 .auth-label {
   font-size: 13px;
@@ -95,20 +100,8 @@
   color: var(--color-text-muted);
 }
 
-/* 
-  .auth-field-wrap is the dropdown anchor.
-  position: relative here — NOT on .auth-field-inner —
-  so the dropdown width matches the input exactly.
-*/
-.auth-field-wrap {
-  position: relative;
-}
-
-.auth-field-inner {
-  display: flex;
-  align-items: center;
-  position: relative;
-}
+.auth-field-wrap  { position: relative; }
+.auth-field-inner { display: flex; align-items: center; position: relative; }
 
 .auth-field-icon {
   position: absolute;
@@ -131,18 +124,15 @@
   font-size: 14px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-
 .auth-input:focus {
   outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-input-focus);
 }
-
-.auth-input.error { border-color: var(--color-error); }
-.auth-input.error:focus { box-shadow: 0 0 0 3px rgba(241,92,109,0.2); }
-.auth-input::placeholder { color: var(--color-text-dim); }
-
-.auth-input.has-toggle { padding-right: 42px; }
+.auth-input.error          { border-color: var(--color-error); }
+.auth-input.error:focus    { box-shadow: 0 0 0 3px rgba(241,92,109,0.2); }
+.auth-input::placeholder   { color: var(--color-text-dim); }
+.auth-input.has-toggle     { padding-right: 42px; }
 
 .auth-field-error {
   font-size: 12px;
@@ -165,23 +155,12 @@
   border: none;
   cursor: pointer;
 }
-
 .auth-password-toggle:hover {
   color: var(--color-text);
   background: var(--color-btn-ghost-hover);
 }
 
-/* ── Custom email dropdown ──
-   Anchored to .auth-field-wrap (position:relative).
-   top: calc(100% + 4px) puts it 4px below the input.
-
-   FIX: z-index raised to 9999 to guarantee it renders above every
-   possible stacking context on mobile WebViews (some browsers create
-   implicit stacking contexts on elements with -webkit-overflow-scrolling
-   or transform, which can bury a z-index:200 child).
-
-   No overflow:hidden anywhere in the chain — it can spill freely.
-*/
+/* ── Email dropdown ── */
 .auth-dropdown {
   position: absolute;
   top: calc(100% + 4px);
@@ -197,7 +176,6 @@
   padding: 4px;
   overflow: hidden;
 }
-
 .auth-dropdown-item {
   display: flex;
   align-items: center;
@@ -209,26 +187,12 @@
   cursor: pointer;
   transition: background 0.12s ease;
   -webkit-tap-highlight-color: transparent;
-  /* FIX: prevents a 300ms tap delay on mobile triggering the item twice */
   touch-action: manipulation;
 }
-
 .auth-dropdown-item:hover,
-.auth-dropdown-item:active {
-  background: rgba(0,168,132,0.08);
-}
-
-.auth-dropdown-icon {
-  color: var(--color-text-dim);
-  flex-shrink: 0;
-}
-
-.auth-dropdown-email {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.auth-dropdown-item:active { background: rgba(0,168,132,0.08); }
+.auth-dropdown-icon  { color: var(--color-text-dim); flex-shrink: 0; }
+.auth-dropdown-email { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Submit button ── */
 .auth-btn {
@@ -244,26 +208,179 @@
   transition: background 0.15s ease, transform 0.1s ease;
   margin-top: 4px;
 }
-
-.auth-btn:hover:not(:disabled) { background: var(--color-primary-hover); }
+.auth-btn:hover:not(:disabled)  { background: var(--color-primary-hover); }
 .auth-btn:active:not(:disabled) { transform: scale(0.99); }
-.auth-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.auth-btn:disabled               { opacity: 0.6; cursor: not-allowed; }
 
-/* ── Error banner ── */
-.auth-error-banner {
+/* ── Error / success banners ── */
+.auth-error-banner,
+.auth-success-banner {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.auth-error-banner {
   background: rgba(241,92,109,0.1);
   border: 1px solid rgba(241,92,109,0.3);
-  border-radius: 10px;
   color: var(--color-error);
-  font-size: 13px;
-  margin-bottom: 4px;
+}
+.auth-success-banner {
+  background: rgba(0,168,132,0.1);
+  border: 1px solid rgba(0,168,132,0.3);
+  color: var(--color-primary);
+}
+.auth-error-banner svg,
+.auth-success-banner svg { flex-shrink: 0; }
+
+/* ── Divider row (between form and Google button) ── */
+.auth-divider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+}
+.auth-divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+.auth-divider-text {
+  font-size: 12px;
+  color: var(--color-text-dim);
+  white-space: nowrap;
 }
 
-.auth-error-banner svg { flex-shrink: 0; }
+/* ── Google Sign-In wrapper ── */
+.auth-google-wrapper {
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.auth-google-wrapper.auth-google-disabled {
+  position: relative;
+  pointer-events: none;
+  opacity: 0.55;
+}
+.auth-google-inner    { width: 100%; }
+.auth-google-overlay  {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  z-index: 10;
+  cursor: not-allowed;
+}
+
+/* Fallback custom Google button */
+.auth-google-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: #fff;
+  border: 1.5px solid #dadce0;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #3c4043;
+  cursor: pointer;
+  transition: box-shadow 0.15s, background 0.15s;
+  margin-bottom: 4px;
+}
+.auth-google-btn:hover:not(:disabled) {
+  box-shadow: 0 1px 6px rgba(0,0,0,0.15);
+  background: #f8f8f8;
+}
+.auth-google-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── OTP screen ── */
+.auth-otp-hint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+.auth-otp-email {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* 6-box OTP input grid */
+.auth-otp-boxes {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+.auth-otp-box {
+  width: 48px;
+  height: 56px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-input-bg);
+  color: var(--color-text);
+  caret-color: var(--color-primary);
+  transition: border-color 0.15s, box-shadow 0.15s;
+  /* Remove default number spinners */
+  -moz-appearance: textfield;
+}
+.auth-otp-box::-webkit-inner-spin-button,
+.auth-otp-box::-webkit-outer-spin-button { appearance: none; }
+.auth-otp-box:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-input-focus);
+}
+.auth-otp-box.error {
+  border-color: var(--color-error);
+  animation: auth-otp-shake 0.3s ease;
+}
+@keyframes auth-otp-shake {
+  0%, 100% { transform: translateX(0); }
+  25%       { transform: translateX(-4px); }
+  75%       { transform: translateX(4px); }
+}
+
+/* Resend row */
+.auth-resend-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+.auth-resend-label {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+.auth-resend-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.15s, opacity 0.15s;
+}
+.auth-resend-btn:hover:not(.disabled) { background: rgba(0,168,132,0.08); }
+.auth-resend-btn.disabled { color: var(--color-text-dim); cursor: default; opacity: 0.8; }
 
 /* ── Footer ── */
 .auth-footer {
@@ -272,13 +389,8 @@
   font-size: 13px;
   color: var(--color-text-muted);
 }
-
-.auth-footer a {
-  color: var(--color-primary);
-  font-weight: 600;
-}
-
-.auth-footer a:hover { text-decoration: underline; }
+.auth-footer a             { color: var(--color-primary); font-weight: 600; }
+.auth-footer a:hover       { text-decoration: underline; }
 
 .auth-divider {
   height: 1px;
@@ -288,7 +400,12 @@
 
 /* ── Mobile ── */
 @media (max-width: 480px) {
-  .auth-card {
-    padding: 32px 20px 28px;
-  }
+  .auth-card { padding: 32px 20px 28px; }
+
+  .auth-otp-boxes { gap: 8px; }
+  .auth-otp-box   { width: 42px; height: 50px; font-size: 20px; }
+}
+@media (max-width: 360px) {
+  .auth-otp-boxes { gap: 6px; }
+  .auth-otp-box   { width: 36px; height: 44px; font-size: 18px; }
 }
