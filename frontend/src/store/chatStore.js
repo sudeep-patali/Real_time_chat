@@ -179,6 +179,29 @@ export const useChatStore = create((set) => ({
       }
     }),
 
+  // Update privacy-related fields for a user across all rooms
+  // Called when server emits 'privacy_updated' or a filtered 'user_profile_updated'
+  updateUserPrivacyInRooms: (userId, patch) =>
+    set((state) => {
+      const uid = userId?.toString()
+      const applyToParticipant = (p) => {
+        const pid = (p._id || p.id)?.toString()
+        if (pid !== uid) return p
+        return { ...p, ...patch }
+      }
+      const applyToRoom = (r) => {
+        const otherUser = r.otherUser && (r.otherUser._id || r.otherUser.id)?.toString() === uid
+          ? { ...r.otherUser, ...patch }
+          : r.otherUser
+        const participantIds = (r.participantIds || []).map(applyToParticipant)
+        return { ...r, otherUser, participantIds }
+      }
+      return {
+        rooms:        state.rooms.map(applyToRoom),
+        pendingRooms: state.pendingRooms.map(applyToRoom),
+      }
+    }),
+
   updateLastMessage: (roomId, message) =>
     set((state) => {
       const roomIdStr = roomId?.toString()

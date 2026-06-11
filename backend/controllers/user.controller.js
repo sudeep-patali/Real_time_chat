@@ -1,53 +1,27 @@
-const User   = require('../models/User');
-const Report = require('../models/Report');
-const Room   = require('../models/Room');
-const Message = require('../models/Message');
+const User            = require('../models/User');
+const Report          = require('../models/Report');
+const Room            = require('../models/Room');
+const Message         = require('../models/Message');
+const applyPrivacyRules = require('../utils/applyPrivacyRules');
 
-// ── Privacy helper ────────────────────────────────────────────────────────────
-// Returns true when `viewerId` is an accepted contact of `targetUser`
-// (i.e. they share at least one accepted DM room).
-async function isContact(viewerId, targetUserId) {
-  const room = await Room.findOne({
-    isGroup: false,
-    participantIds: { $all: [viewerId, targetUserId] },
-    status: 'accepted',
-  });
-  return !!room;
-}
-
-// Applies a user's privacy settings to the fields we expose.
-// `viewer` is the requesting user's _id (string or ObjectId).
-// `target` is the full User document (must include `.privacy`).
-async function applyPrivacy(viewerIdRaw, target) {
-  const viewerId   = viewerIdRaw?.toString();
-  const targetId   = target._id?.toString();
-  const isSelf     = viewerId === targetId;
-  const privacy    = target.privacy || {};
-
-  // Owner always sees full data
-  if (isSelf) {
-    return {
-      avatar:    target.avatar,
-      isOnline:  target.isOnline,
-      lastSeen:  target.lastSeen,
-    };
-  }
-
-  const contact = await isContact(viewerId, target._id);
-
-  const canSee = (setting) => {
-    if (setting === 'everyone') return true;
-    if (setting === 'accepted') return contact;
-    return false; // 'nobody'
-  };
-
+// ── Helper: build the public response shape from filtered data ────────────────
+function buildUserResponse(user, filtered, extras = {}) {
   return {
-    avatar:   canSee(privacy.profilePhoto) ? target.avatar : null,
-    isOnline: canSee(privacy.onlineStatus) ? target.isOnline : null,  // null = hidden
-    lastSeen: canSee(privacy.lastSeen)     ? target.lastSeen : null,
+    id:           user._id,
+    name:         user.name,
+    username:     user.username      || '',
+    email:        user.email         || '',
+    bio:          user.bio           || '',
+    avatar:       filtered.profileImage,
+    isOnline:     filtered.onlineStatus,
+    lastSeen:     filtered.lastSeen,
+    statusValue:  user.statusValue   || 'available',
+    customStatus: user.customStatus  || '',
+    canMessage:   filtered.canMessage,
+    canAddToGroup: filtered.canAddToGroup,
+    ...extras,
   };
 }
-
 
 // GET /api/users/search
 exports.searchUsers = async (req, res, next) => {
@@ -58,28 +32,18 @@ exports.searchUsers = async (req, res, next) => {
     const users = await User.find({
       $or: [
         { name:  { $regex: q.trim(), $options: 'i' } },
-        { email: { $regex: q.trim(), $options: 'i' } }
+        { email: { $regex: q.trim(), $options: 'i' } },
       ],
-      _id: { $ne: req.user._id }
+      _id: { $ne: req.user._id },
     })
-    .select('name email avatar isOnline bio lastSeen username statusValue customStatus')
+    .select('name email avatar isOnline bio lastSeen username statusValue customStatus privacy')
     .limit(20);
 
     const filtered = await Promise.all(users.map(async u => {
-      const pf = await applyPrivacy(req.user._id, u);
-      return {
-        id:           u._id,
-        name:         u.name,
-        email:        u.email,
-        avatar:       pf.avatar,
-        isOnline:     pf.isOnline,
-        bio:          u.bio,
-        lastSeen:     pf.lastSeen,
-        username:     u.username,
-        statusValue:  u.statusValue,
-        customStatus: u.customStatus,
-      };
+      const pf = await applyPrivacyRules(req.user._id, u);
+      return buildUserResponse(u, pf);
     }));
+
     res.json({ users: filtered });
   } catch (err) { next(err); }
 };
@@ -88,25 +52,15 @@ exports.searchUsers = async (req, res, next) => {
 exports.getAllUsers = async (req, res, next) => {
   try {
     const users = await User.find({ _id: { $ne: req.user._id } })
-      .select('name email avatar isOnline bio lastSeen username statusValue customStatus')
+      .select('name email avatar isOnline bio lastSeen username statusValue customStatus privacy')
       .limit(50)
       .sort({ name: 1 });
 
     const filtered = await Promise.all(users.map(async u => {
-      const pf = await applyPrivacy(req.user._id, u);
-      return {
-        id:           u._id,
-        name:         u.name,
-        email:        u.email,
-        avatar:       pf.avatar,
-        isOnline:     pf.isOnline,
-        bio:          u.bio,
-        lastSeen:     pf.lastSeen,
-        username:     u.username,
-        statusValue:  u.statusValue,
-        customStatus: u.customStatus,
-      };
+      const pf = await applyPrivacyRules(req.user._id, u);
+      return buildUserResponse(u, pf);
     }));
+
     res.json({ users: filtered });
   } catch (err) { next(err); }
 };
@@ -124,25 +78,16 @@ exports.getUserById = async (req, res, next) => {
     const otherUser    = await User.findById(user._id).select('blockedUsers');
     const hasBlockedMe = otherUser.blockedUsers.map(id => id.toString()).includes(req.user._id.toString());
 
-    const privacyFiltered = await applyPrivacy(req.user._id, user);
+    const pf = await applyPrivacyRules(req.user._id, user);
 
     res.json({
       user: {
-        id:           user._id,
-        name:         user.name,
-        email:        user.email,
-        avatar:       privacyFiltered.avatar,
-        isOnline:     privacyFiltered.isOnline,
-        bio:          user.bio,
-        lastSeen:     privacyFiltered.lastSeen,
+        ...buildUserResponse(user, pf),
         memberSince:  user.createdAt,
         createdAt:    user.createdAt,
-        username:     user.username,
-        statusValue:  user.statusValue,
-        customStatus: user.customStatus,
         isBlocked,
         isMuted,
-        hasBlockedMe
+        hasBlockedMe,
       }
     });
   } catch (err) { next(err); }
@@ -154,11 +99,11 @@ exports.updateProfile = async (req, res, next) => {
     const { name, bio, avatar, username, statusValue, customStatus } = req.body;
 
     const updateFields = {};
-    if (name  !== undefined) updateFields.name  = name;
-    if (bio   !== undefined) updateFields.bio   = bio;
-    if (avatar !== undefined) updateFields.avatar = avatar;
-    if (username !== undefined) updateFields.username = username;
-    if (statusValue !== undefined) updateFields.statusValue = statusValue;
+    if (name         !== undefined) updateFields.name         = name;
+    if (bio          !== undefined) updateFields.bio          = bio;
+    if (avatar       !== undefined) updateFields.avatar       = avatar;
+    if (username     !== undefined) updateFields.username     = username;
+    if (statusValue  !== undefined) updateFields.statusValue  = statusValue;
     if (customStatus !== undefined) updateFields.customStatus = customStatus;
 
     const user = await User.findByIdAndUpdate(
@@ -183,18 +128,10 @@ exports.updateProfile = async (req, res, next) => {
       privacy:      user.privacy || {},
     };
 
-    // Broadcast profile change to all connected clients so
-    // other users see the updated avatar/name in real time
+    // Privacy-aware profile broadcast
     const io = req.app.get('io');
     if (io) {
-      io.emit('user_profile_updated', {
-        userId: user._id.toString(),
-        name:   user.name,
-        avatar: user.avatar,
-        username: user.username,
-        statusValue: user.statusValue,
-        customStatus: user.customStatus,
-      });
+      await broadcastPrivacyAwareProfileUpdate(io, user);
     }
 
     res.json({ user: payload });
@@ -202,67 +139,146 @@ exports.updateProfile = async (req, res, next) => {
 };
 
 // PUT /api/users/me/privacy
-// FIX: Added readReceipts and typingIndicator — previously these were sent from
-// the frontend but silently ignored here, so changes were never persisted to DB.
 exports.updatePrivacy = async (req, res, next) => {
   try {
     const {
       profilePhoto, lastSeen, onlineStatus, addToGroups, messages,
-      readReceipts, typingIndicator,         // ← FIX: handle these fields
+      readReceipts, typingIndicator,
     } = req.body;
 
     const privacyUpdate = {};
-    if (profilePhoto     !== undefined) privacyUpdate['privacy.profilePhoto']    = profilePhoto;
-    if (lastSeen         !== undefined) privacyUpdate['privacy.lastSeen']         = lastSeen;
-    if (onlineStatus     !== undefined) privacyUpdate['privacy.onlineStatus']     = onlineStatus;
-    if (addToGroups      !== undefined) privacyUpdate['privacy.addToGroups']      = addToGroups;
-    if (messages         !== undefined) privacyUpdate['privacy.messages']         = messages;
-    if (readReceipts     !== undefined) privacyUpdate['privacy.readReceipts']     = readReceipts;     // ← FIX
-    if (typingIndicator  !== undefined) privacyUpdate['privacy.typingIndicator']  = typingIndicator;  // ← FIX
+    if (profilePhoto    !== undefined) privacyUpdate['privacy.profilePhoto']   = profilePhoto;
+    if (lastSeen        !== undefined) privacyUpdate['privacy.lastSeen']        = lastSeen;
+    if (onlineStatus    !== undefined) privacyUpdate['privacy.onlineStatus']    = onlineStatus;
+    if (addToGroups     !== undefined) privacyUpdate['privacy.addToGroups']     = addToGroups;
+    if (messages        !== undefined) privacyUpdate['privacy.messages']        = messages;
+    if (readReceipts    !== undefined) privacyUpdate['privacy.readReceipts']    = readReceipts;
+    if (typingIndicator !== undefined) privacyUpdate['privacy.typingIndicator'] = typingIndicator;
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { $set: privacyUpdate },
       { new: true }
-    ).select('privacy');
+    ).select('name email avatar isOnline lastSeen role username bio statusValue customStatus createdAt privacy');
 
-    const fullUser = await User.findById(req.user._id)
-      .select('name email avatar role username bio statusValue customStatus isOnline lastSeen createdAt privacy');
+    // ── Emit privacy_updated so every connected client can re-apply filters ──
+    const io = req.app.get('io');
+    if (io) {
+      // Broadcast to ALL connected sockets with the new privacy settings.
+      // Each client will re-evaluate what it should show for this user.
+      io.emit('privacy_updated', {
+        userId:  user._id.toString(),
+        privacy: {
+          profilePhoto:    user.privacy.profilePhoto,
+          lastSeen:        user.privacy.lastSeen,
+          onlineStatus:    user.privacy.onlineStatus,
+          addToGroups:     user.privacy.addToGroups,
+          messages:        user.privacy.messages,
+          readReceipts:    user.privacy.readReceipts    ?? true,
+          typingIndicator: user.privacy.typingIndicator ?? true,
+        },
+      });
+
+      // Also emit a privacy-aware profile update so clients that hold a cached
+      // profile for this user reset avatar / online status immediately.
+      await broadcastPrivacyAwareProfileUpdate(io, user);
+    }
+
     res.json({
       privacy: user.privacy,
       message: 'Privacy settings updated',
       user: {
-        id:           fullUser._id,
-        name:         fullUser.name,
-        email:        fullUser.email,
-        avatar:       fullUser.avatar,
-        role:         fullUser.role,
-        username:     fullUser.username,
-        bio:          fullUser.bio          || '',
-        statusValue:  fullUser.statusValue  || 'available',
-        customStatus: fullUser.customStatus || '',
-        isOnline:     fullUser.isOnline,
-        lastSeen:     fullUser.lastSeen,
-        createdAt:    fullUser.createdAt,
-        privacy:      fullUser.privacy || {},
+        id:           user._id,
+        name:         user.name,
+        email:        user.email,
+        avatar:       user.avatar,
+        role:         user.role,
+        username:     user.username,
+        bio:          user.bio          || '',
+        statusValue:  user.statusValue  || 'available',
+        customStatus: user.customStatus || '',
+        isOnline:     user.isOnline,
+        lastSeen:     user.lastSeen,
+        createdAt:    user.createdAt,
+        privacy:      user.privacy || {},
       }
     });
   } catch (err) { next(err); }
 };
+
+/**
+ * Broadcasts a `user_profile_updated` event to every connected socket, but
+ * applies privacy rules so each viewer only receives the data they are allowed
+ * to see.  The owner's own socket always receives the full unfiltered payload.
+ *
+ * @param {import('socket.io').Server} io
+ * @param {import('mongoose').Document} userDoc  — full User document
+ */
+async function broadcastPrivacyAwareProfileUpdate(io, userDoc) {
+  try {
+    const allSockets = await io.fetchSockets();
+    const userId     = userDoc._id.toString();
+
+    for (const s of allSockets) {
+      if (!s.user) continue;
+      const viewerId = s.user._id?.toString();
+      const isSelf   = viewerId === userId;
+
+      let payload;
+      if (isSelf) {
+        payload = {
+          userId:      userId,
+          name:        userDoc.name,
+          avatar:      userDoc.avatar  || null,
+          username:    userDoc.username || '',
+          statusValue: userDoc.statusValue,
+          customStatus: userDoc.customStatus,
+          isOnline:    userDoc.isOnline,
+          lastSeen:    userDoc.lastSeen,
+        };
+      } else {
+        const pf = await applyPrivacyRules(viewerId, userDoc);
+        payload = {
+          userId:      userId,
+          name:        userDoc.name,
+          avatar:      pf.profileImage,
+          username:    userDoc.username || '',
+          statusValue: userDoc.statusValue,
+          customStatus: userDoc.customStatus,
+          isOnline:    pf.onlineStatus,
+          lastSeen:    pf.lastSeen,
+          canMessage:  pf.canMessage,
+          canAddToGroup: pf.canAddToGroup,
+        };
+      }
+
+      s.emit('user_profile_updated', payload);
+    }
+  } catch (err) {
+    console.error('broadcastPrivacyAwareProfileUpdate error:', err);
+    // Fallback: emit basic info without privacy check
+    io.emit('user_profile_updated', {
+      userId:   userDoc._id.toString(),
+      name:     userDoc.name,
+      avatar:   userDoc.avatar,
+      username: userDoc.username || '',
+    });
+  }
+}
+
+// Export for use in socket handler
+exports.broadcastPrivacyAwareProfileUpdate = broadcastPrivacyAwareProfileUpdate;
 
 // GET /api/users/me/stats
 exports.getUserStats = async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    // Message model uses `senderId`, Room model uses `participantIds`
     const messagesSent = await Message.countDocuments({ senderId: userId });
-
     const groupsJoined = await Room.countDocuments({
       isGroup: true,
       participantIds: userId
     });
-
     const sharedMessages = await Message.find({
       senderId: userId,
       type: { $in: ['file', 'document', 'image', 'video', 'audio', 'gif'] }

@@ -167,8 +167,14 @@ function Chat() {
   })()
 
   // ── Online status ─────────────────────────────────────────────
+  // otherUser.isOnline can be:
+  //   true   — user is online and allowed to show it
+  //   false  — user is offline
+  //   null   — online status is hidden by privacy setting
+  // onlineUsers store is also privacy-filtered (backend only emits to allowed viewers)
+  const onlineStatusHidden = otherUser?.isOnline === null
   const isOnlineFromServer = otherUser?.isOnline === true
-  const isOnlineFromStore  = !!otherUserId && onlineUsers.includes(otherUserId)
+  const isOnlineFromStore  = !onlineStatusHidden && !!otherUserId && onlineUsers.includes(otherUserId)
   const isOnline           = isOnlineFromServer || isOnlineFromStore
 
   // ── Block status fetch ────────────────────────────────────────
@@ -310,7 +316,7 @@ function Chat() {
                   <span className='chat-header-avatar-initials'>{initials}</span>
                 )}
               </div>
-              {isOnline && <span className='chat-header-online-dot' />}
+              {isOnline && !onlineStatusHidden && <span className='chat-header-online-dot' />}
             </div>
 
             <div className='chat-header-info'>
@@ -323,7 +329,14 @@ function Chat() {
                 <>
                   <span className='chat-header-name'>{displayName || '…'}</span>
                   <span className={`chat-header-status ${isOnline ? '' : 'offline'}`}>
-                    {isPending ? 'Message Request' : isOnline ? 'Online' : 'Offline'}
+                    {isPending
+                      ? 'Message Request'
+                      : onlineStatusHidden
+                        ? ''
+                        : isOnline
+                          ? 'Online'
+                          : 'Offline'
+                    }
                   </span>
                 </>
               )}

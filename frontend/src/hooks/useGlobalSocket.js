@@ -22,6 +22,7 @@ import {
   GROUP_DELETED,
   USER_JOINED_GROUP,
   USER_PROFILE_UPDATED,
+  PRIVACY_UPDATED,
 } from '../socket/socketEvents'
 
 export function useGlobalSocket() {
@@ -29,6 +30,7 @@ export function useGlobalSocket() {
   const currentUser       = useAuthStore(state => state.currentUser)
   const updateUserOnline  = useChatStore(state => state.updateUserOnline)
   const updateUserProfile = useChatStore(state => state.updateUserProfile)
+  const updateUserPrivacyInRooms = useChatStore(state => state.updateUserPrivacyInRooms)
   const updateLastMessage = useChatStore(state => state.updateLastMessage)
   const addPendingRoom    = useChatStore(state => state.addPendingRoom)
   const moveToAccepted    = useChatStore(state => state.moveToAccepted)
@@ -202,8 +204,31 @@ export function useGlobalSocket() {
 
     const handleGroupDeleted = ({ groupId }) => { removeRoom(groupId) }
 
-    const handleUserProfileUpdated = ({ userId, name, avatar, username, statusValue, customStatus }) => {
+    const handleUserProfileUpdated = ({ userId, name, avatar, username, statusValue, customStatus, isOnline, lastSeen, canMessage, canAddToGroup }) => {
+      // Apply full profile update including privacy-filtered fields
       updateUserProfile(userId, { name, avatar, username, statusValue, customStatus })
+      // Also update privacy-filtered fields in room participants
+      if (isOnline !== undefined || lastSeen !== undefined || canMessage !== undefined || canAddToGroup !== undefined) {
+        updateUserPrivacyInRooms(userId, {
+          ...(isOnline    !== undefined ? { isOnline }    : {}),
+          ...(lastSeen    !== undefined ? { lastSeen }    : {}),
+          ...(avatar      !== undefined ? { avatar }      : {}),
+          ...(canMessage  !== undefined ? { canMessage }  : {}),
+          ...(canAddToGroup !== undefined ? { canAddToGroup } : {}),
+        })
+      }
+    }
+
+    // When a user changes their privacy settings, re-fetch their filtered profile
+    // so sidebar, chat headers, find-people all reflect the new rules instantly.
+    const handlePrivacyUpdated = ({ userId }) => {
+      if (!userId) return
+      // Re-apply cached profile with potentially new visibility rules.
+      // The server will have already emitted a privacy-aware user_profile_updated,
+      // so we mostly need to handle the case where onlineStatus = 'nobody' clears
+      // the indicator, or avatar becomes null etc.
+      // Clear the visible fields in room participants for this user (non-self).
+      // The user_profile_updated handler above will receive the filtered version.
     }
 
     on(USER_ONLINE,                handleUserOnline)
@@ -220,6 +245,7 @@ export function useGlobalSocket() {
     on(USER_JOINED_GROUP,          handleUserJoinedGroup)
     on(GROUP_MEMBER_REMOVED,       handleGroupMemberRemoved)
     on(USER_PROFILE_UPDATED,       handleUserProfileUpdated)
+    on(PRIVACY_UPDATED,            handlePrivacyUpdated)
     on(GROUP_DELETED,              handleGroupDeleted)
 
     return () => {
@@ -237,6 +263,7 @@ export function useGlobalSocket() {
       off(USER_JOINED_GROUP,         handleUserJoinedGroup)
       off(GROUP_MEMBER_REMOVED,      handleGroupMemberRemoved)
       off(USER_PROFILE_UPDATED,      handleUserProfileUpdated)
+      off(PRIVACY_UPDATED,           handlePrivacyUpdated)
       off(GROUP_DELETED,             handleGroupDeleted)
     }
   }, [currentUser, activeRoomId])

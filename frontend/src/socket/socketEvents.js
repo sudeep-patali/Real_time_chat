@@ -59,3 +59,5 @@ export const GROUP_INVITATION_REJECTED = 'group-invitation-rejected'
 export const GROUP_MEMBER_REMOVED      = 'group-member-removed'
 export const GROUP_DELETED             = 'group-deleted'
 export const USER_JOINED_GROUP         = 'user-joined-group'
+// Privacy events
+export const PRIVACY_UPDATED = 'privacy_updated'

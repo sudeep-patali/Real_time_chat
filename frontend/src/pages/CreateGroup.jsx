@@ -457,21 +457,38 @@ if (typeof document !== 'undefined' && !document.getElementById('cg-styles')) {
 // ── Memoised result row ───────────────────────────────────────────────────────
 const ResultRow = React.memo(function ResultRow({ user, selected, onToggle }) {
   const src = user.avatar || generateAvatar(user.name || 'U')
+  // Privacy: canAddToGroup may be false when "Add Me to Groups" = Nobody
+  const canAdd     = user.canAddToGroup !== false
+  const showOnline = user.isOnline === true
+
+  const handleClick = () => {
+    if (!canAdd) return  // silently block — tooltip/message shown below
+    onToggle(user)
+  }
+
   return (
     <div
-      className={`cg-result-row${selected ? ' cg-result-row--selected' : ''}`}
-      onClick={() => onToggle(user)}
+      className={`cg-result-row${selected ? ' cg-result-row--selected' : ''}${!canAdd ? ' cg-result-row--disabled' : ''}`}
+      onClick={handleClick}
+      title={!canAdd ? 'This user does not allow being added to groups.' : undefined}
+      style={!canAdd ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
     >
       <div className="cg-result-avatar-wrap">
         <img src={src} alt={user.name} className="cg-result-avatar" loading="lazy" />
-        {user.isOnline && <span className="cg-online-dot" />}
+        {showOnline && <span className="cg-online-dot" />}
       </div>
       <div className="cg-result-info">
         <span className="cg-result-name">{user.name}</span>
         <span className="cg-result-email">{user.email}</span>
+        {!canAdd && (
+          <span style={{ fontSize: 11, color: 'var(--color-text-dim)', marginTop: 2, display: 'block' }}>
+            Does not allow group additions
+          </span>
+        )}
       </div>
-      <div className={`cg-check-circle${selected ? ' cg-check-circle--on' : ''}`}>
-        {selected && <Check size={11} color="#fff" strokeWidth={3} />}
+      <div className={`cg-check-circle${selected ? ' cg-check-circle--on' : ''}${!canAdd ? ' cg-check-circle--blocked' : ''}`}>
+        {selected && canAdd && <Check size={11} color="#fff" strokeWidth={3} />}
+        {!canAdd && <span style={{ fontSize: 12 }}>🚫</span>}
       </div>
     </div>
   )

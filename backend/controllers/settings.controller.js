@@ -96,6 +96,20 @@ exports.updateSettings = async (req, res, next) => {
       addToGroups:     user.privacy?.addToGroups     ?? 'everyone',
     };
 
+    // Emit privacy_updated if any privacy section was changed so all connected
+    // clients can re-apply the new rules for this user in real time.
+    const hasPrivacyChange = body.privacy && typeof body.privacy === 'object'
+      && Object.keys(body.privacy).length > 0;
+    if (hasPrivacyChange) {
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('privacy_updated', {
+          userId:  req.user._id.toString(),
+          privacy: settingsObj.privacy,
+        });
+      }
+    }
+
     res.json({ settings: settingsObj });
   } catch (err) { next(err); }
 };

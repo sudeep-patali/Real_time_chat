@@ -842,8 +842,11 @@ module.exports = (io) => {
         const thisUser = await User.findById(socket.user._id).select('privacy')
         const onlineStatusPref = thisUser?.privacy?.onlineStatus || 'everyone'
 
+        const lastSeenPref = thisUser?.privacy?.lastSeen || 'everyone'
+
         if (onlineStatusPref === 'everyone') {
-          io.emit('user_online', { userId: socket.user._id.toString(), isOnline: false, lastSeen: now })
+          const ls = lastSeenPref === 'everyone' ? now : null
+          io.emit('user_online', { userId: socket.user._id.toString(), isOnline: false, lastSeen: ls })
         } else if (onlineStatusPref === 'accepted') {
           const contactRooms = await Room.find({
             isGroup: false,
@@ -858,7 +861,15 @@ module.exports = (io) => {
           })
           io.sockets.sockets.forEach(s => {
             if (s.user && (contactIds.has(s.user._id.toString()) || s.user._id.toString() === socket.user._id.toString())) {
-              s.emit('user_online', { userId: socket.user._id.toString(), isOnline: false, lastSeen: now })
+              const isContact = contactIds.has(s.user._id.toString())
+              const isSelf    = s.user._id.toString() === socket.user._id.toString()
+              const canSeeLs  = lastSeenPref === 'everyone'
+                || (lastSeenPref === 'accepted' && (isContact || isSelf))
+              s.emit('user_online', {
+                userId:   socket.user._id.toString(),
+                isOnline: false,
+                lastSeen: canSeeLs ? now : null,
+              })
             }
           })
         }

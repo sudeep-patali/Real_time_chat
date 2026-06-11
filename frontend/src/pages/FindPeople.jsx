@@ -18,6 +18,10 @@ import '../styles/mobile-page.css'
 // ─── Profile Preview Modal ─────────────────────────────────────────────────────
 function ProfilePreview({ user, onClose, onStartChat, loading }) {
   const avatarSrc = user.avatar || generateAvatar(user.name)
+  // Privacy: isOnline may be null when online status is hidden
+  const showOnline    = user.isOnline === true
+  const canMessage    = user.canMessage !== false  // default true if not set
+  const statusVisible = user.isOnline !== null && user.isOnline !== undefined
 
   const handleOverlay = (e) => {
     if (e.target === e.currentTarget) onClose()
@@ -38,42 +42,55 @@ function ProfilePreview({ user, onClose, onStartChat, loading }) {
           <div className='fp-preview-avatar-section'>
             <div className='fp-preview-avatar-wrap'>
               <img src={avatarSrc} alt={user.name} className='fp-preview-avatar' />
-              {user.isOnline && <span className='fp-preview-online-dot' />}
+              {showOnline && <span className='fp-preview-online-dot' />}
             </div>
 
             <p className='fp-preview-email'>{user.email}</p>
             {user.bio && <p className='fp-preview-bio'>&ldquo;{user.bio}&rdquo;</p>}
 
-            <div className='fp-preview-status-row'>
-              <span className={`fp-preview-status-pill ${user.isOnline ? 'online' : 'offline'}`}>
-                <span className='fp-preview-status-dot' />
-                {user.isOnline ? 'Online now' : 'Offline'}
-              </span>
-            </div>
+            {statusVisible && (
+              <div className='fp-preview-status-row'>
+                <span className={`fp-preview-status-pill ${showOnline ? 'online' : 'offline'}`}>
+                  <span className='fp-preview-status-dot' />
+                  {showOnline ? 'Online now' : 'Offline'}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className='fp-preview-actions'>
             <button className='btn btn-secondary btn-sm' onClick={onClose}>
               Cancel
             </button>
-            <button
-              className='btn btn-primary'
-              onClick={() => onStartChat(user)}
-              disabled={loading}
-              style={{ flex: 2 }}
-            >
-              {loading ? (
-                <span className='fp-btn-loading'>
-                  <span className='fp-btn-spinner' />
-                  Starting…
-                </span>
-              ) : (
-                <>
-                  <MessageCircle size={15} />
-                  Start Chat
-                </>
-              )}
-            </button>
+            {canMessage ? (
+              <button
+                className='btn btn-primary'
+                onClick={() => onStartChat(user)}
+                disabled={loading}
+                style={{ flex: 2 }}
+              >
+                {loading ? (
+                  <span className='fp-btn-loading'>
+                    <span className='fp-btn-spinner' />
+                    Starting…
+                  </span>
+                ) : (
+                  <>
+                    <MessageCircle size={15} />
+                    Start Chat
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                className='btn btn-secondary'
+                disabled
+                style={{ flex: 2, opacity: 0.6, cursor: 'not-allowed' }}
+                title='This user does not accept new messages'
+              >
+                Messages Restricted
+              </button>
+            )}
           </div>
         </div>
 
@@ -85,6 +102,7 @@ function ProfilePreview({ user, onClose, onStartChat, loading }) {
 // ─── User Row ──────────────────────────────────────────────────────────────────
 function UserRow({ user, query, onPreview }) {
   const avatarSrc = user.avatar || generateAvatar(user.name)
+  const showOnline = user.isOnline === true  // null = hidden by privacy
 
   const highlight = (text, q) => {
     if (!q.trim()) return text
@@ -105,15 +123,15 @@ function UserRow({ user, query, onPreview }) {
     <div className='fp-user-row' onClick={() => onPreview(user)}>
       <div className='fp-row-avatar-wrap'>
         <img src={avatarSrc} alt={user.name} className='fp-row-avatar' />
-        {user.isOnline && <span className='fp-row-online-dot' />}
+        {showOnline && <span className='fp-row-online-dot' />}
       </div>
       <div className='fp-row-info'>
         <p className='fp-row-name'>{highlight(user.name, query)}</p>
         <p className='fp-row-email'>{highlight(user.email, query)}</p>
         {user.bio && <p className='fp-row-bio'>{user.bio}</p>}
       </div>
-      <span className={`fp-row-status-tag ${user.isOnline ? 'online' : 'offline'}`}>
-        {user.isOnline ? '● Online' : '○ Offline'}
+      <span className={`fp-row-status-tag ${showOnline ? 'online' : user.isOnline === null ? 'hidden' : 'offline'}`}>
+        {showOnline ? '● Online' : user.isOnline === null ? '' : '○ Offline'}
       </span>
     </div>
   )
