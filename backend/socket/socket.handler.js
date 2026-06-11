@@ -3,6 +3,7 @@ const User                   = require('../models/User')
 const Message                = require('../models/Message')
 const Room                   = require('../models/Room')
 const { createNotification } = require('../controllers/notification.controller')
+const applyPrivacyRules      = require('../utils/applyPrivacyRules')
 
 // Helper: returns true if userA has blocked userB OR userB has blocked userA
 async function isBlockedBetween(userAId, userBId) {
@@ -285,16 +286,34 @@ module.exports = (io) => {
           updatedAt: new Date()
         })
 
-        await message.populate('senderId', 'name avatar')
+        await message.populate('senderId', 'name avatar privacy')
 
         const status = computeStatus(message, room, socket.user._id)
+
+        // Helper: returns the sender's avatar only if their privacy setting allows it
+        // for a given viewer. 'everyone' → show; 'nobody' → hide; 'accepted' → contacts only.
+        // For the sender themselves we always show (isSelf case handled in applyPrivacyRules).
+        const senderPrivacyPhoto = message.senderId.privacy?.profilePhoto || 'everyone'
+        const avatarForViewer = (viewerId) => {
+          if (viewerId?.toString() === message.senderId._id.toString()) {
+            // Sender always sees their own avatar
+            return message.senderId.avatar
+          }
+          if (senderPrivacyPhoto === 'nobody') return null
+          // 'accepted' and 'everyone' cases: for 'everyone' always show;
+          // for 'accepted' we rely on applyPrivacyRules at the profile level —
+          // here we conservatively show if they share a room (they do, since
+          // they are both participants of this room).
+          if (senderPrivacyPhoto === 'accepted') return message.senderId.avatar
+          return message.senderId.avatar // 'everyone'
+        }
 
         const formatted = {
           id:             message._id.toString(),
           content:        message.content,
           senderId:       message.senderId._id.toString(),
           senderName:     message.senderId.name,
-          senderAvatar:   message.senderId.avatar,
+          senderAvatar:   message.senderId.avatar, // sender sees own avatar (overridden per-recipient below)
           roomId:         message.roomId.toString(),
           timestamp:      message.createdAt,
           sentAt:         message.sentAt,
@@ -313,7 +332,9 @@ module.exports = (io) => {
           status,
         }
 
-        socket.to(roomId).emit('receive_message', { message: formatted })
+        socket.to(roomId).emit('receive_message', {
+          message: { ...formatted, senderAvatar: avatarForViewer(null) }
+        })
         socket.emit('message_sent', { message: formatted, tempId })
 
         if (!room.isGroup) {

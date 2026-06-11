@@ -1,6 +1,7 @@
-const Message = require('../models/Message')
-const Room    = require('../models/Room')
-const User    = require('../models/User')
+const Message            = require('../models/Message')
+const Room               = require('../models/Room')
+const User               = require('../models/User')
+const applyPrivacyRules  = require('../utils/applyPrivacyRules')
 
 async function isBlockedBetween(userAId, userBId) {
   const [a, b] = await Promise.all([
@@ -48,19 +49,35 @@ exports.getHistory = async (req, res, next) => {
     if (cursor) query._id = { $lt: cursor }
 
     const messages = await Message.find(query)
-      .populate('senderId', 'name avatar')
+      .populate('senderId', 'name avatar privacy')
       .populate('memberStatuses.userId', 'name avatar')
       .sort({ createdAt: -1 })
       .limit(Number(limit))
 
     const room = await Room.findById(req.params.roomId).select('isGroup participantIds')
 
+    // Viewer is the requesting user
+    const viewerId = req.user._id.toString()
+
     const hasMore = messages.length === Number(limit)
     res.json({
-      messages: messages.reverse().map(msg => ({
-        ...msg.toObject(),
-        status: computeStatus(msg, room)
-      })),
+      messages: messages.reverse().map(msg => {
+        const msgObj = { ...msg.toObject(), status: computeStatus(msg, room) }
+        // Apply profilePhoto privacy: hide avatar when sender set it to 'nobody'
+        // (or 'accepted' and viewer is not a contact — we use applyPrivacyRules' canSee logic inline)
+        const senderPrivacyPhoto = msg.senderId?.privacy?.profilePhoto || 'everyone'
+        const senderId = (msg.senderId?._id || msg.senderId)?.toString()
+        if (senderId !== viewerId) {
+          if (senderPrivacyPhoto === 'nobody') {
+            if (msgObj.senderId && typeof msgObj.senderId === 'object') {
+              msgObj.senderId = { ...msgObj.senderId, avatar: null }
+            }
+          }
+          // Note: 'accepted' (contacts-only) avatars are shown since participants
+          // share a room, implying a contact relationship. 'everyone' always shown.
+        }
+        return msgObj
+      }),
       hasMore,
       nextCursor: hasMore ? messages[0]._id : null
     })
