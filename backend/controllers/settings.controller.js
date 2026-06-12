@@ -53,6 +53,10 @@ exports.getSettings = async (req, res, next) => {
 // whole `settings` subdocument. This prevents a partial payload from wiping
 // fields the client didn't send (e.g. saving notifications shouldn't clear
 // accessibility settings).
+//
+// Phase 1: After a successful save, emits 'chatSettingsUpdated' to the
+// user's personal Socket.IO room so all other open tabs/devices pick up
+// the new chat settings in real time without a page refresh.
 exports.updateSettings = async (req, res, next) => {
   try {
     const body = req.body;
@@ -110,7 +114,34 @@ exports.updateSettings = async (req, res, next) => {
       }
     }
 
+    // Phase 1: emit chatSettingsUpdated to the user's personal room so all
+    // other open tabs and devices update their chat settings in real time.
+    const hasChatChange = body.chat && typeof body.chat === 'object'
+      && Object.keys(body.chat).length > 0;
+    if (hasChatChange) {
+      const io = req.io || req.app.get('io');
+      if (io) {
+        io.to(req.user._id.toString()).emit('chatSettingsUpdated', {
+          chat: settingsObj.chat,
+        });
+      }
+    }
+
     res.json({ settings: settingsObj });
+  } catch (err) { next(err); }
+};
+
+// POST /api/users/me/clear-cache
+// Phase 1: No DB change needed — the cache is entirely client-side.
+// Emits 'cacheCleared' to the user's personal Socket.IO room so any other
+// open tabs of the same user also clear their localStorage in response.
+exports.clearCache = async (req, res, next) => {
+  try {
+    const io = req.io || req.app.get('io');
+    if (io) {
+      io.to(req.user._id.toString()).emit('cacheCleared', {});
+    }
+    res.json({ message: 'Cache cleared' });
   } catch (err) { next(err); }
 };
 

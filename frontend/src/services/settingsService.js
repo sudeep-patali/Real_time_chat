@@ -13,3 +13,8 @@ export const deleteSession     = (id)     => api.delete(`/users/me/sessions/${id
 export const deleteAllSessions = ()       => api.delete('/users/me/sessions')
 export const getSecurityLogs   = ()       => api.get('/users/me/security-logs')
 export const logoutAllDevices  = ()       => api.delete('/auth/sessions')
+
+// Phase 1: Notify the backend that the current tab cleared its cache.
+// The backend emits 'cacheCleared' to the user's personal Socket.IO room
+// so all other open tabs of the same user wipe their localStorage too.
+export const clearCacheAPI     = ()       => api.post('/users/me/clear-cache')

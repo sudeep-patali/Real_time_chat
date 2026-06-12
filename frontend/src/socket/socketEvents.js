@@ -59,5 +59,19 @@ export const GROUP_INVITATION_REJECTED = 'group-invitation-rejected'
 export const GROUP_MEMBER_REMOVED      = 'group-member-removed'
 export const GROUP_DELETED             = 'group-deleted'
 export const USER_JOINED_GROUP         = 'user-joined-group'
+
 // Privacy events
 export const PRIVACY_UPDATED = 'privacy_updated'
+
+// ── Phase 1: Chat Settings real-time sync ────────────────────────────────────
+// server → client (personal room): chat settings were updated on another tab/device
+export const CHAT_SETTINGS_UPDATED = 'chatSettingsUpdated'
+
+// client → server: update chat settings via socket (alternative to HTTP PUT)
+export const UPDATE_CHAT_SETTINGS  = 'updateChatSettings'
+
+// server → client (personal room): cache was cleared on another tab/device
+export const CACHE_CLEARED         = 'cacheCleared'
+
+// server → room: a message's expiresAt has passed and it was soft-deleted
+export const MESSAGE_EXPIRED       = 'message:expired'

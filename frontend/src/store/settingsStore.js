@@ -26,6 +26,7 @@ const defaultSettings = {
     autoDownloadImages: true,
     autoDownloadVideos: false,
     autoDownloadDocs: false,
+    autoDownloadVoiceMessages: true,
   },
   groups: {
     muteAll: false,
@@ -40,6 +41,26 @@ const defaultSettings = {
     keyboardShortcuts: true,
     screenReader: false,
   },
+}
+
+// Keys / prefixes that must never be removed during a cache clear.
+// This mirrors the logic in ChatSettingsSection and the cacheCleared handler.
+const PRESERVE_KEYS     = new Set(['token', 'user'])
+const PRESERVE_PREFIXES = ['theme_', 'fontSize_', 'bubbleSize_', 'compactMode_', 'wallpaper-']
+
+function shouldPreserveKey(key) {
+  if (PRESERVE_KEYS.has(key)) return true
+  return PRESERVE_PREFIXES.some(prefix => key.startsWith(prefix))
+}
+
+function clearNonEssentialStorage() {
+  try {
+    Object.keys(localStorage).forEach(key => {
+      if (!shouldPreserveKey(key)) localStorage.removeItem(key)
+    })
+  } catch (err) {
+    console.error('[settingsStore] clearNonEssentialStorage error:', err)
+  }
 }
 
 export const useSettingsStore = create((set, get) => ({
@@ -134,5 +155,42 @@ export const useSettingsStore = create((set, get) => ({
     } finally {
       set({ saving: false })
     }
+  },
+
+  // ── Phase 1: Real-time socket sync ────────────────────────────────────────
+  // Call this once from useGlobalSocket (or wherever the raw socket is available)
+  // after the socket connects. Registers listeners for:
+  //   • chatSettingsUpdated — another tab/device changed chat settings; merge them in.
+  //   • cacheCleared        — another tab/device cleared the cache; do the same here.
+  //
+  // Always calls socket.off before socket.on to prevent duplicate listeners if
+  // the function is called more than once (e.g. on reconnect).
+  setupSocketListeners: (socket) => {
+    if (!socket) return
+
+    // ── chatSettingsUpdated ──────────────────────────────────────────────────
+    const handleChatSettingsUpdated = (data) => {
+      if (!data?.chat || typeof data.chat !== 'object') return
+      set(state => ({
+        settings: {
+          ...state.settings,
+          chat: { ...state.settings.chat, ...data.chat },
+        },
+      }))
+    }
+
+    socket.off('chatSettingsUpdated', handleChatSettingsUpdated)
+    socket.on('chatSettingsUpdated',  handleChatSettingsUpdated)
+
+    // ── cacheCleared ─────────────────────────────────────────────────────────
+    // Another tab called clearCacheAPI() which caused the backend to emit this
+    // event to all of this user's personal-room sockets. Mirror the clear here.
+    const handleCacheCleared = () => {
+      clearNonEssentialStorage()
+      console.log('[settingsStore] Cache cleared by remote tab signal')
+    }
+
+    socket.off('cacheCleared', handleCacheCleared)
+    socket.on('cacheCleared',  handleCacheCleared)
   },
 }))

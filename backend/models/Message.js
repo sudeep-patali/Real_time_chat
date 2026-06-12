@@ -27,6 +27,12 @@ const messageSchema = new mongoose.Schema({
   authTag:   { type: String, default: null },   // 16-byte GCM authentication tag
   encrypted: { type: Boolean, default: false }, // true → content is ciphertext
 
+  // ── Disappearing messages ─────────────────────────────────────────────────
+  // Set to a future Date when the sender's autoDeleteMessages setting is active.
+  // The expireMessages background job queries this index every 60 seconds and
+  // soft-deletes any message whose expiresAt has passed.
+  expiresAt: { type: Date, default: null, index: true },
+
   // ── WhatsApp-style status tracking ──────────────────────────────────────
   sentAt:      { type: Date, default: null },
   deliveredAt: { type: Date, default: null },

@@ -81,6 +81,10 @@ module.exports = (io) => {
         console.log(`${socket.user.name} auto-joined ${roomIds.length} rooms`)
       }
 
+      // Phase 1: Join the user's personal room so io.to(userId) targeted
+      // emits work (chatSettingsUpdated, cacheCleared, etc.).
+      socket.join(socket.user._id.toString())
+
       // ── On connect: deliver all undelivered messages to this user ──────────
       const undeliveredMessages = await Message.find({
         roomId:      { $in: userRooms.map(r => r._id) },
@@ -217,6 +221,43 @@ module.exports = (io) => {
     socket.on('join_room', ({ roomId }) => socket.join(roomId))
     socket.on('leave_room', () => {
       // Don't actually leave — messages delivered even when chat is closed.
+    })
+
+    // ── Phase 1: Update chat settings via socket ──────────────────────────────
+    // Validates the payload against an allowlist, writes to DB with dot-notation
+    // $set (same as the HTTP endpoint), then broadcasts the new values back to
+    // ALL of the user's connected sockets (including the one that sent the event)
+    // via the personal user room so every open tab stays in sync.
+    socket.on('updateChatSettings', async ({ chat }) => {
+      try {
+        if (!chat || typeof chat !== 'object') return
+
+        const allowed = [
+          'autoDeleteMessages',
+          'autoDownloadImages',
+          'autoDownloadVideos',
+          'autoDownloadDocs',
+          'autoDownloadVoiceMessages',
+        ]
+
+        const setObj = {}
+        allowed.forEach(k => {
+          if (chat[k] !== undefined) setObj[`settings.chat.${k}`] = chat[k]
+        })
+
+        if (!Object.keys(setObj).length) return
+
+        await User.findByIdAndUpdate(
+          socket.user._id,
+          { $set: setObj },
+          { runValidators: false }
+        )
+
+        // Broadcast back to all personal-room sockets (other tabs / devices)
+        io.to(socket.user._id.toString()).emit('chatSettingsUpdated', { chat })
+      } catch (e) {
+        console.error('updateChatSettings error', e)
+      }
     })
 
     // ── Send Message ─────────────────────────────────────────────────────────

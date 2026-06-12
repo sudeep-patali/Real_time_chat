@@ -19,12 +19,9 @@ const settingsRoutes     = require('./routes/settings.routes')
 const auditRoutes        = require('./routes/audit.routes')          // NEW
 const socketHandler      = require('./socket/socket.handler')
 
-const { apiLimiter, loginLimiter } = require('./middleware/rateLimiter')  // NEW
-const { startAuditReportJob }      = require('./jobs/auditReport')         // NEW
-
-connectDB().then(() => {
-  startAuditReportJob()   // Start weekly audit cron after DB is ready
-})
+const { apiLimiter, loginLimiter }    = require('./middleware/rateLimiter')  // NEW
+const { startAuditReportJob }         = require('./jobs/auditReport')         // NEW
+const { startExpireMessagesJob }      = require('./jobs/expireMessages')      // Phase 1
 
 const app    = express()
 const server = http.createServer(app)
@@ -131,3 +128,12 @@ app.use(require('./middleware/error.middleware'))
 
 const PORT = process.env.PORT || 5000
 server.listen(PORT, () => console.log('Server running on port', PORT))
+
+// ── Start background jobs after DB is ready ───────────────────────────────────
+// connectDB() is called here (after server.listen) so the HTTP server is up
+// before we wait for Mongo. Jobs are started inside .then() so they only run
+// once the connection is established and models are ready.
+connectDB().then(() => {
+  startAuditReportJob()          // Weekly audit report cron
+  startExpireMessagesJob(io)     // Phase 1: disappearing messages sweep (every 60s)
+})

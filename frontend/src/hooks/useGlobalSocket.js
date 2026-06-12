@@ -24,27 +24,28 @@ import {
   USER_JOINED_GROUP,
   USER_PROFILE_UPDATED,
   PRIVACY_UPDATED,
+  MESSAGE_EXPIRED,
 } from '../socket/socketEvents'
 
 export function useGlobalSocket() {
-  const { on, off }       = useSocket()
-  const currentUser       = useAuthStore(state => state.currentUser)
-  const setUser           = useAuthStore(state => state.setUser)
-  const updateSection     = useSettingsStore(state => state.updateSection)
-  const updateUserOnline  = useChatStore(state => state.updateUserOnline)
-  const updateUserProfile = useChatStore(state => state.updateUserProfile)
+  const { on, off, socket } = useSocket()
+  const currentUser         = useAuthStore(state => state.currentUser)
+  const setUser             = useAuthStore(state => state.setUser)
+  const updateSection       = useSettingsStore(state => state.updateSection)
+  const updateUserOnline    = useChatStore(state => state.updateUserOnline)
+  const updateUserProfile   = useChatStore(state => state.updateUserProfile)
   const updateUserPrivacyInRooms = useChatStore(state => state.updateUserPrivacyInRooms)
-  const updateLastMessage = useChatStore(state => state.updateLastMessage)
-  const addPendingRoom    = useChatStore(state => state.addPendingRoom)
-  const moveToAccepted    = useChatStore(state => state.moveToAccepted)
-  const removePendingRoom = useChatStore(state => state.removePendingRoom)
-  const removeRoom        = useChatStore(state => state.removeRoom)
-  const addRoom           = useChatStore(state => state.addRoom)
-  const addNotification   = useNotificationStore(state => state.addNotification)
-  const incrementUnread   = useNotificationStore(state => state.incrementUnread)
-  const activeRoomId      = useChatStore(state => state.activeRoomId)
-  const addInvitation     = useGroupInviteStore(state => state.addInvitation)
-  const removeInvitation  = useGroupInviteStore(state => state.removeInvitation)
+  const updateLastMessage   = useChatStore(state => state.updateLastMessage)
+  const addPendingRoom      = useChatStore(state => state.addPendingRoom)
+  const moveToAccepted      = useChatStore(state => state.moveToAccepted)
+  const removePendingRoom   = useChatStore(state => state.removePendingRoom)
+  const removeRoom          = useChatStore(state => state.removeRoom)
+  const addRoom             = useChatStore(state => state.addRoom)
+  const addNotification     = useNotificationStore(state => state.addNotification)
+  const incrementUnread     = useNotificationStore(state => state.incrementUnread)
+  const activeRoomId        = useChatStore(state => state.activeRoomId)
+  const addInvitation       = useGroupInviteStore(state => state.addInvitation)
+  const removeInvitation    = useGroupInviteStore(state => state.removeInvitation)
 
   useEffect(() => {
     // ── Online status ─────────────────────────────────────────────────────
@@ -258,6 +259,13 @@ export function useGlobalSocket() {
       }
     }
 
+    // ── Phase 1: Expired message — remove bubble from active chat ─────────
+    // Emitted by expireMessages.js background job to the message's roomId room.
+    const handleMessageExpired = ({ messageId, roomId }) => {
+      if (!messageId) return
+      useChatStore.getState().removeMessage(messageId)
+    }
+
     on(USER_ONLINE,                handleUserOnline)
     on(RECEIVE_MESSAGE,            handleReceiveMessage)
     on(MESSAGE_SENT,               handleMessageSent)
@@ -274,6 +282,14 @@ export function useGlobalSocket() {
     on(USER_PROFILE_UPDATED,       handleUserProfileUpdated)
     on(PRIVACY_UPDATED,            handlePrivacyUpdated)
     on(GROUP_DELETED,              handleGroupDeleted)
+    on(MESSAGE_EXPIRED,            handleMessageExpired)
+
+    // Phase 1: Set up chat-settings + cache-cleared real-time listeners.
+    // Uses the raw socket object so settingsStore can call socket.on/off directly.
+    const { setupSocketListeners } = useSettingsStore.getState()
+    if (setupSocketListeners && socket) {
+      setupSocketListeners(socket)
+    }
 
     return () => {
       off(USER_ONLINE,               handleUserOnline)
@@ -292,8 +308,12 @@ export function useGlobalSocket() {
       off(USER_PROFILE_UPDATED,      handleUserProfileUpdated)
       off(PRIVACY_UPDATED,           handlePrivacyUpdated)
       off(GROUP_DELETED,             handleGroupDeleted)
+      off(MESSAGE_EXPIRED,           handleMessageExpired)
+      // chatSettingsUpdated and cacheCleared are cleaned up by setupSocketListeners'
+      // own off() calls on the next invocation, which is the correct pattern for
+      // store-owned listeners that aren't tied to React component lifecycle.
     }
-  }, [currentUser, activeRoomId, setUser, updateSection])
+  }, [currentUser, activeRoomId, setUser, updateSection, socket])
 }
 
 function normalizeRoomBasic(room, currentUserId) {

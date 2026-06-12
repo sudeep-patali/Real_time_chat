@@ -72,10 +72,12 @@ const userSchema = new mongoose.Schema({
       typingIndicator: { type: Boolean, default: true },
     },
     chat: {
-      autoDeleteMessages:  { type: String, default: 'off' },
-      autoDownloadImages:  { type: Boolean, default: true },
-      autoDownloadVideos:  { type: Boolean, default: false },
-      autoDownloadDocs:    { type: Boolean, default: false },
+      autoDeleteMessages:      { type: String,  default: 'off'  },
+      autoDownloadImages:      { type: Boolean, default: true   },
+      autoDownloadVideos:      { type: Boolean, default: false  },
+      autoDownloadDocs:        { type: Boolean, default: false  },
+      // Phase 1: added voice-message auto-download preference
+      autoDownloadVoiceMessages: { type: Boolean, default: true },
     },
     groups: {
       muteAll:       { type: Boolean, default: false },
