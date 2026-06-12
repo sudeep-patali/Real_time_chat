@@ -216,6 +216,8 @@ function GroupChat() {
             onDeleteMessage={deleteMessage}
             onReply={setReplyTo}
             onScrollToMessage={handleScrollToMessage}
+            isGroup={true}
+            groupMembers={members}
           />
 
           <MessageInput onSend={sendMessage} roomId={roomId} isGroup={true} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} />

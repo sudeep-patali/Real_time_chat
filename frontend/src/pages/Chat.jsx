@@ -172,15 +172,19 @@ function Chat() {
   })()
 
   // ── Online status ─────────────────────────────────────────────
-  // otherUser.isOnline can be:
-  //   true   — user is online and allowed to show it
-  //   false  — user is offline
-  //   null   — online status is hidden by privacy setting
-  // onlineUsers store is also privacy-filtered (backend only emits to allowed viewers)
-  const onlineStatusHidden = otherUser?.isOnline === null
-  const isOnlineFromServer = otherUser?.isOnline === true
-  const isOnlineFromStore  = !onlineStatusHidden && !!otherUserId && onlineUsers.includes(otherUserId)
-  const isOnline           = isOnlineFromServer || isOnlineFromStore
+  // Read the live otherUser from the rooms store (updated by updateUserOnline)
+  // so the header re-renders the instant a user_online socket event fires.
+  // Fall back to the room object for the initial render.
+  const liveRoom      = rooms.find(r => r.id === roomId || r._id === roomId)
+  const liveOtherUser = liveRoom?.otherUser || otherUser
+
+  // isOnline === null means the other user hid their status (privacy setting)
+  const onlineStatusHidden = liveOtherUser?.isOnline === null
+  const isOnline = !onlineStatusHidden && (
+    onlineUsers.includes(otherUserId) || liveOtherUser?.isOnline === true
+  )
+  // lastSeen is updated in the room object by updateUserOnline on disconnect
+  const displayLastSeen = liveOtherUser?.lastSeen
 
   // ── Block status fetch ────────────────────────────────────────
   const fetchBlockStatus = useCallback(async () => {
@@ -354,7 +358,9 @@ function Chat() {
                         ? ''
                         : isOnline
                           ? 'Online'
-                          : 'Offline'
+                          : displayLastSeen
+                            ? `Last seen ${new Date(displayLastSeen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                            : 'Offline'
                     }
                   </span>
                 </>

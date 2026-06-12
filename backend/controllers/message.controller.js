@@ -159,6 +159,7 @@ exports.markRead = async (req, res, next) => {
   try {
     const userId = req.user._id
     const now    = new Date()
+    const io     = req.io   // injected by server.js: app.use((req,_,next)=>{ req.io=io; next() })
     const room   = await Room.findById(req.params.roomId).select('isGroup participantIds')
 
     const unreadCount = await Message.countDocuments({
@@ -169,7 +170,11 @@ exports.markRead = async (req, res, next) => {
     })
 
     if (room?.isGroup) {
-      // Group: update readBy + memberStatuses for each unread message
+      // Group: update readBy + memberStatuses for each unread message,
+      // then emit real-time group-message-read to each original sender.
+      const readerUser = await User.findById(userId).select('privacy')
+      const readReceiptsEnabled = readerUser?.privacy?.readReceipts !== false
+
       const msgs = await Message.find({
         roomId:    req.params.roomId,
         senderId:  { $ne: userId },
@@ -194,9 +199,34 @@ exports.markRead = async (req, res, next) => {
             $push: { memberStatuses: { userId, deliveredAt: now, readAt: now } }
           })
         }
+
+        // Emit real-time event to the message's sender so their tick updates instantly
+        if (readReceiptsEnabled && io) {
+          const updatedMsg = await Message.findById(msg._id).populate('roomId', 'isGroup participantIds')
+          const newStatus  = computeStatus(updatedMsg, room)
+
+          const allSockets    = await io.fetchSockets()
+          const senderSockets = allSockets.filter(
+            s => s.user?._id?.toString() === msg.senderId.toString()
+          )
+          senderSockets.forEach(s => s.emit('group-message-read', {
+            messageId:  msg._id.toString(),
+            roomId:     req.params.roomId,
+            userId:     userId.toString(),
+            readAt:     now,
+            status:     newStatus
+          }))
+        }
       }
     } else {
-      // Individual: set readAt + deliveredAt
+      // Individual: set readAt + deliveredAt, then emit message-read to sender
+      const unreadMsgs = await Message.find({
+        roomId:    req.params.roomId,
+        senderId:  { $ne: userId },
+        readAt:    null,
+        isDeleted: { $ne: true }
+      }).select('_id senderId')
+
       await Message.updateMany(
         { roomId: req.params.roomId, readBy: { $ne: userId } },
         {
@@ -204,6 +234,28 @@ exports.markRead = async (req, res, next) => {
           $set:      { readAt: now, deliveredAt: now }
         }
       )
+
+      // Emit to each distinct sender
+      if (io && unreadMsgs.length > 0) {
+        const bySender = {}
+        for (const msg of unreadMsgs) {
+          const sid = msg.senderId.toString()
+          if (!bySender[sid]) bySender[sid] = []
+          bySender[sid].push(msg._id.toString())
+        }
+        const allSockets = await io.fetchSockets()
+        for (const [senderId, msgIds] of Object.entries(bySender)) {
+          const senderSockets = allSockets.filter(s => s.user?._id?.toString() === senderId)
+          senderSockets.forEach(s => s.emit('message-read', {
+            roomId:     req.params.roomId,
+            userId:     userId.toString(),
+            readAt:     now,
+            messageId:  msgIds[msgIds.length - 1],
+            messageIds: msgIds,
+            status:     'read'
+          }))
+        }
+      }
     }
 
     res.json({ message: 'Marked as read', clearedCount: unreadCount, roomId: req.params.roomId })

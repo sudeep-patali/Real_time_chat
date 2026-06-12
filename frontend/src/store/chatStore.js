@@ -157,12 +157,33 @@ export const useChatStore = create((set) => ({
 
   setOnlineUsers: (users) => set({ onlineUsers: users }),
 
-  updateUserOnline: (userId, isOnline) =>
-    set((state) => ({
-      onlineUsers: isOnline
-        ? [...state.onlineUsers.filter(id => id !== userId), userId]
-        : state.onlineUsers.filter(id => id !== userId)
-    })),
+  updateUserOnline: (userId, isOnline, lastSeen) =>
+    set((state) => {
+      const uid = userId?.toString()
+
+      // 1. Update flat onlineUsers array (used by sidebar badges etc.)
+      const onlineUsers = isOnline
+        ? [...state.onlineUsers.filter(id => id !== uid), uid]
+        : state.onlineUsers.filter(id => id !== uid)
+
+      // 2. Update room.otherUser.isOnline + lastSeen so ChatHeader re-renders instantly
+      const applyToRoom = (r) => {
+        const otherUserId = (r.otherUser?._id || r.otherUser?.id)?.toString()
+        if (!otherUserId || otherUserId !== uid) return r
+        const updatedOtherUser = {
+          ...r.otherUser,
+          isOnline,
+          ...(lastSeen !== undefined ? { lastSeen } : {}),
+        }
+        return { ...r, otherUser: updatedOtherUser }
+      }
+
+      return {
+        onlineUsers,
+        rooms:        state.rooms.map(applyToRoom),
+        pendingRooms: state.pendingRooms.map(applyToRoom),
+      }
+    }),
 
   // Update avatar/name for a user across all rooms and messages
   updateUserProfile: (userId, patch) =>

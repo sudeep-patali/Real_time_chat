@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
+import { useSocket } from '../hooks/useSocket'
 import {
   MoreVertical,
   Pencil,
@@ -81,14 +82,41 @@ function MessageInfoModal({ messageId, onClose }) {
   const [info,    setInfo]    = useState(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
+  const { on, off } = useSocket()
 
-  useEffect(() => {
+  const fetchInfo = useCallback(() => {
     if (!messageId) return
-    setLoading(true)
     messageService.getMessageInfo(messageId)
       .then(res => { setInfo(res.data); setLoading(false) })
       .catch(() => { setError('Failed to load message info'); setLoading(false) })
   }, [messageId])
+
+  useEffect(() => {
+    setLoading(true)
+    fetchInfo()
+  }, [fetchInfo])
+
+  // ── Live refresh: when a member reads the message while the panel is open ─
+  useEffect(() => {
+    if (!messageId) return
+    const handleGroupRead = ({ messageId: evtId }) => {
+      if (evtId === messageId) fetchInfo()
+    }
+    const handleGroupDelivered = ({ messageId: evtId }) => {
+      if (evtId === messageId) fetchInfo()
+    }
+    on('group-message-read',      handleGroupRead)
+    on('group-message-delivered', handleGroupDelivered)
+    // Individual chat read event
+    on('message-read', ({ messageIds, messageId: evtId }) => {
+      const ids = messageIds || (evtId ? [evtId] : [])
+      if (ids.includes(messageId)) fetchInfo()
+    })
+    return () => {
+      off('group-message-read',      handleGroupRead)
+      off('group-message-delivered', handleGroupDelivered)
+    }
+  }, [messageId, fetchInfo, on, off])
 
   const statusIcon = (s) => {
     if (s === 'read')      return <StatusTick status='read' />
@@ -151,38 +179,72 @@ function MessageInfoModal({ messageId, onClose }) {
             </div>
 
             {/* ── Group member-wise status ── */}
-            {info.isGroup && info.memberDetails?.length > 0 && (
-              <div className='msg-info-section'>
-                <div className='msg-info-section-title'>Member Status</div>
-                {info.memberDetails.map(member => (
-                  <div key={member.userId} className='msg-info-member-row'>
-                    <div className='msg-info-member-left'>
-                      {statusIcon(member.status)}
-                      <span className='msg-info-member-name'>{member.name}</span>
-                    </div>
-                    <div className='msg-info-member-right'>
-                      <span
-                        className='msg-info-member-status'
-                        style={{
-                          color: member.status === 'read'
-                            ? '#53bdeb'
-                            : member.status === 'delivered'
-                              ? 'var(--color-text-muted)'
-                              : 'var(--color-text-dim)'
-                        }}
-                      >
-                        {member.status === 'read'
-                          ? `Read ${member.readAt ? new Date(member.readAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}`
-                          : member.status === 'delivered'
-                            ? `Delivered ${member.deliveredAt ? new Date(member.deliveredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}`
-                            : 'Sent'
-                        }
-                      </span>
-                    </div>
+            {info.isGroup && info.memberDetails?.length > 0 && (() => {
+              const readMembers      = info.memberDetails.filter(m => m.status === 'read')
+              const deliveredMembers = info.memberDetails.filter(m => m.status === 'delivered')
+              const sentMembers      = info.memberDetails.filter(m => m.status === 'sent')
+
+              const MemberRow = ({ member }) => (
+                <div key={member.userId} className='msg-info-member-row'>
+                  <div className='msg-info-member-left'>
+                    {statusIcon(member.status)}
+                    <span className='msg-info-member-name'>{member.name}</span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <div className='msg-info-member-right'>
+                    <span
+                      className='msg-info-member-status'
+                      style={{
+                        color: member.status === 'read'
+                          ? '#53bdeb'
+                          : member.status === 'delivered'
+                            ? 'var(--color-text-muted)'
+                            : 'var(--color-text-dim)'
+                      }}
+                    >
+                      {member.status === 'read'
+                        ? member.readAt
+                          ? new Date(member.readAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : 'Read'
+                        : member.status === 'delivered'
+                          ? member.deliveredAt
+                            ? new Date(member.deliveredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            : 'Delivered'
+                          : 'Pending'
+                      }
+                    </span>
+                  </div>
+                </div>
+              )
+
+              return (
+                <>
+                  {readMembers.length > 0 && (
+                    <div className='msg-info-section'>
+                      <div className='msg-info-section-title' style={{ color: '#53bdeb' }}>
+                        Read by ({readMembers.length})
+                      </div>
+                      {readMembers.map(m => <MemberRow key={m.userId} member={m} />)}
+                    </div>
+                  )}
+                  {deliveredMembers.length > 0 && (
+                    <div className='msg-info-section'>
+                      <div className='msg-info-section-title'>
+                        Delivered to ({deliveredMembers.length})
+                      </div>
+                      {deliveredMembers.map(m => <MemberRow key={m.userId} member={m} />)}
+                    </div>
+                  )}
+                  {sentMembers.length > 0 && (
+                    <div className='msg-info-section'>
+                      <div className='msg-info-section-title' style={{ opacity: 0.55 }}>
+                        Not yet delivered ({sentMembers.length})
+                      </div>
+                      {sentMembers.map(m => <MemberRow key={m.userId} member={m} />)}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
         )}
       </div>
@@ -199,8 +261,40 @@ function InfoRow({ label, value }) {
   )
 }
 
+// ── Compute group tick status from live memberStatuses array ─────────────────
+// This mirrors the backend computeStatus logic so the tick stays in sync
+// with real-time group-message-read events without waiting for a full re-fetch.
+function computeGroupTickStatus(message, groupMembers, currentUserId) {
+  const memberStatuses = message.memberStatuses || []
+  const others = (groupMembers || []).filter(
+    m => (m.id || m._id)?.toString() !== currentUserId?.toString()
+  )
+  if (!others.length) return message.status || 'sent'
+
+  const readBySet      = new Set((message.readBy || []).map(id => (id._id || id)?.toString()))
+  const deliveredToSet = new Set((message.deliveredTo || []).map(id => (id._id || id)?.toString()))
+
+  // Also check memberStatuses for readAt/deliveredAt
+  memberStatuses.forEach(ms => {
+    const uid = (ms.userId?._id || ms.userId)?.toString()
+    if (!uid) return
+    if (ms.readAt)      readBySet.add(uid)
+    if (ms.deliveredAt) deliveredToSet.add(uid)
+  })
+
+  const otherIds   = others.map(m => (m.id || m._id)?.toString())
+  const allRead    = otherIds.every(id => readBySet.has(id))
+  const allDeliv   = otherIds.every(id => deliveredToSet.has(id))
+  const anyDeliv   = otherIds.some(id => deliveredToSet.has(id))
+
+  if (allRead)        return 'read'
+  if (allDeliv)       return 'delivered'
+  if (anyDeliv)       return 'delivered'
+  return message.status || 'sent'
+}
+
 // ── MessageBubble ────────────────────────────────────────────────────────────
-function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false, isMatch = false, onEdit, onDelete, onReply, onScrollToMessage, recipientReadReceipts = true }) {
+function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false, isMatch = false, onEdit, onDelete, onReply, onScrollToMessage, recipientReadReceipts = true, isGroup = false, groupMembers = [] }) {
   const { currentUser }             = useAuth()
   const [menuOpen,      setMenuOpen]      = useState(false)
   const [editing,       setEditing]       = useState(false)
@@ -540,16 +634,20 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
               <span className='bubble-edited-label'>edited</span>
             )}
             <span className='bubble-time'>{formatTime(message.timestamp)}</span>
-            {isOwn && (
-              <span className='bubble-tick-wrap'>
-                {/* Cap tick at 'delivered' if recipient has disabled read receipts */}
-                <StatusTick status={
-                  !recipientReadReceipts && message.status === 'read'
+            {isOwn && (() => {
+              // For group messages: derive tick from live memberStatuses/readBy so tick
+              // updates the instant group-message-read fires, without a full re-fetch.
+              const tickStatus = isGroup
+                ? computeGroupTickStatus(message, groupMembers, currentUser?.id || currentUser?._id)
+                : (!recipientReadReceipts && message.status === 'read'
                     ? 'delivered'
-                    : (message.status || 'sent')
-                } />
-              </span>
-            )}
+                    : (message.status || 'sent'))
+              return (
+                <span className='bubble-tick-wrap'>
+                  <StatusTick status={tickStatus} />
+                </span>
+              )
+            })()}
           </span>
 
           {/* ── Chevron menu trigger — appears on hover ── */}

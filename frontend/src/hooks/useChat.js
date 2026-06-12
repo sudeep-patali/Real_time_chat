@@ -315,7 +315,7 @@ export function useChat(roomId) {
     const handleGroupTypingStop  = ({ userId }) => stopTyping(userId)
 
     const handleUserTyping  = ({ userId, isTyping }) => setTyping(userId, isTyping)
-    const handleUserOnline  = ({ userId, isOnline }) => updateUserOnline(userId, isOnline)
+    const handleUserOnline  = ({ userId, isOnline, lastSeen }) => updateUserOnline(userId, isOnline, lastSeen)
 
     const handleReceiveRequest  = ({ roomId: reqRoomId, senderId, senderName }) => {
       addPendingRoom({ id: reqRoomId, participantIds: [senderId], isGroup: false, status: 'pending',
@@ -344,9 +344,12 @@ export function useChat(roomId) {
     on(MESSAGE_SENT,        handleMessageSent)
     on(MSG_DELIVERED,       handleMsgDelivered)
     on(MSG_READ,            handleMsgRead)
-    on(MESSAGE_READ,        handleMsgRead) // catch-branch fallback (underscore variant)
+    // NOTE: MESSAGE_READ ('message_read') is the outbound emit constant, not an inbound event.
+    // The inbound read-receipt event is MSG_READ ('message-read'). Do NOT register MESSAGE_READ here.
     on(GROUP_MSG_DELIVERED, handleGroupMsgDelivered)
     on(GROUP_MSG_READ,      handleGroupMsgRead)
+    // NOTE: GROUP_MESSAGE_READ is the same string as GROUP_MSG_READ ('group-message-read').
+    // Registering both creates a duplicate listener. Only one is needed.
     on(TYPING_START,        handleTypingStart)
     on(TYPING_STOP,         handleTypingStop)
     on(GROUP_TYPING_START,  handleGroupTypingStart)
@@ -368,7 +371,6 @@ export function useChat(roomId) {
       off(MESSAGE_SENT,        handleMessageSent)
       off(MSG_DELIVERED,       handleMsgDelivered)
       off(MSG_READ,            handleMsgRead)
-      off(MESSAGE_READ,        handleMsgRead)
       off(GROUP_MSG_DELIVERED, handleGroupMsgDelivered)
       off(GROUP_MSG_READ,      handleGroupMsgRead)
       off(TYPING_START,        handleTypingStart)

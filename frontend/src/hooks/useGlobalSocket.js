@@ -48,9 +48,9 @@ export function useGlobalSocket() {
 
   useEffect(() => {
     // ── Online status ─────────────────────────────────────────────────────
-    const handleUserOnline = ({ userId, isOnline }) => {
+    const handleUserOnline = ({ userId, isOnline, lastSeen }) => {
       if (!userId) return
-      updateUserOnline(userId.toString(), isOnline)
+      updateUserOnline(userId.toString(), isOnline, lastSeen)
     }
 
     // ── Incoming messages (sidebar preview) ───────────────────────────────
