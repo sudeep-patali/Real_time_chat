@@ -27,6 +27,43 @@ import {
   MESSAGE_EXPIRED,
 } from '../socket/socketEvents'
 
+// ── Phase 2: Auto-download helper ────────────────────────────────────────────
+// Reads the current chat settings from the settings store and returns true when
+// the message type matches an enabled auto-download preference.  Completely
+// silent — no UI changes, no loading states, no error surfaces.
+function triggerAutoDownloadIfEnabled(message) {
+  if (!message?.fileUrl) return
+
+  const { chat } = useSettingsStore.getState().settings || {}
+  if (!chat) return
+
+  const shouldDownload = (() => {
+    switch (message.type) {
+      case 'image':    return !!chat.autoDownloadImages
+      case 'video':    return !!chat.autoDownloadVideos
+      case 'audio':    return !!chat.autoDownloadVoiceMessages
+      case 'document':
+      case 'file':     return !!chat.autoDownloadDocs
+      default:         return false
+    }
+  })()
+
+  if (!shouldDownload) return
+
+  fetch(message.fileUrl)
+    .then(r => r.blob())
+    .then(blob => {
+      const url = URL.createObjectURL(blob)
+      const a   = document.createElement('a')
+      a.href     = url
+      a.download = message.fileName || 'download'
+      a.click()
+      URL.revokeObjectURL(url)
+    })
+    .catch(() => {}) // silent fail — never surface errors to the user
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function useGlobalSocket() {
   const { on, off, socket } = useSocket()
   const currentUser         = useAuthStore(state => state.currentUser)
@@ -54,7 +91,7 @@ export function useGlobalSocket() {
       updateUserOnline(userId.toString(), isOnline, lastSeen)
     }
 
-    // ── Incoming messages (sidebar preview) ───────────────────────────────
+    // ── Incoming messages (sidebar preview + auto-download) ───────────────
     const handleReceiveMessage = ({ message }) => {
       if (!message) return
       const roomId   = message.roomId?.toString()
@@ -90,9 +127,12 @@ export function useGlobalSocket() {
           incrementUnread(roomId)
         }
       }
+
+      // Phase 2: Auto-download the file if the recipient has it enabled
+      triggerAutoDownloadIfEnabled(message)
     }
 
-    // ── Sender sidebar preview ─────────────────────────────────────────────
+    // ── Sender sidebar preview ────────────────────────────────────────────
     const handleMessageSent = ({ message }) => {
       if (!message) return
       const roomId = message.roomId?.toString()
@@ -103,6 +143,9 @@ export function useGlobalSocket() {
         type:      message.type     || 'text',
         fileName:  message.fileName || null,
       })
+      // Auto-download is intentionally NOT triggered here — the sender already
+      // has the file locally (they just uploaded it).  Download only fires for
+      // incoming messages in handleReceiveMessage.
     }
 
     // ── UNREAD_INCREMENT (server-driven fallback) ──────────────────────────

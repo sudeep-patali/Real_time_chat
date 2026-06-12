@@ -283,6 +283,24 @@ module.exports = (io) => {
         const msgType = validTypes.includes(type) ? type : 'text'
         const now = new Date()
 
+        // ── Phase 2: Compute expiresAt from sender's autoDeleteMessages setting ──
+        // Fetch only the settings.chat sub-document to keep the query lean.
+        // If the setting is 'off' or unset, expiresAt stays null so the message
+        // is never picked up by the expireMessages background job.
+        const senderSettings = await User.findById(socket.user._id).select('settings.chat')
+        const autoDelete = senderSettings?.settings?.chat?.autoDeleteMessages || 'off'
+
+        const expiresAtMap = {
+          '24h': 24 * 60 * 60 * 1000,
+          '7d':   7 * 24 * 60 * 60 * 1000,
+          '30d': 30 * 24 * 60 * 60 * 1000,
+        }
+
+        const expiresAt = expiresAtMap[autoDelete]
+          ? new Date(Date.now() + expiresAtMap[autoDelete])
+          : null
+        // ─────────────────────────────────────────────────────────────────────────
+
         let initialMemberStatuses = []
         let initialDeliveredTo    = []
         let initialReadBy         = [socket.user._id]
@@ -320,6 +338,7 @@ module.exports = (io) => {
           deliveredTo:    initialDeliveredTo,
           memberStatuses: initialMemberStatuses,
           replyTo:        replyTo      || null,
+          expiresAt,                              // Phase 2: null when autoDelete is 'off'
         })
 
         await Room.findByIdAndUpdate(roomId, {
@@ -370,6 +389,7 @@ module.exports = (io) => {
           fileDuration:   message.fileDuration,
           uploadSource:   message.uploadSource || null,
           replyTo:        message.replyTo || null,
+          expiresAt:      message.expiresAt || null,  // Phase 2: included so frontend can show countdown (Phase 3)
           status,
         }
 
