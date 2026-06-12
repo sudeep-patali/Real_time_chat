@@ -42,6 +42,19 @@ export const useChatStore = create((set) => ({
       })
     })),
 
+  // Update multiple messages at once (e.g. mark-all-read)
+  bulkEditMessagesInStore: (messageIds, patchOrFn) =>
+    set((state) => {
+      const idSet = new Set(messageIds)
+      return {
+        messages: state.messages.map(m => {
+          if (!idSet.has(m.id)) return m
+          const patch = typeof patchOrFn === 'function' ? patchOrFn(m) : patchOrFn
+          return { ...m, ...patch }
+        })
+      }
+    }),
+
   setMessages: (messages) => set({ messages }),
 
   setRooms: (serverRooms) =>

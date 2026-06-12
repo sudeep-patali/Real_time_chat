@@ -94,7 +94,8 @@ export function useChat(roomId) {
   const addMessage         = useChatStore(state => state.addMessage)
   const replaceMessage     = useChatStore(state => state.replaceMessage)
   const removeMessage      = useChatStore(state => state.removeMessage)
-  const editMessageInStore = useChatStore(state => state.editMessageInStore)
+  const editMessageInStore      = useChatStore(state => state.editMessageInStore)
+  const bulkEditMessagesInStore = useChatStore(state => state.bulkEditMessagesInStore)
   const setActiveRoom      = useChatStore(state => state.setActiveRoom)
   const setTyping          = useChatStore(state => state.setTyping)
   const setTypingUser      = useChatStore(state => state.setTypingUser)
@@ -113,7 +114,15 @@ export function useChat(roomId) {
   useEffect(() => { privacyRef.current = privacySettings }, [privacySettings])
   const { emit, on, off }  = useSocket()
 
-  const typingTimers = useRef({})
+  const pendingStatusUpdates = useRef({}) // { realMessageId: { status, deliveredAt, readAt } }
+  const typingTimers         = useRef({})
+
+  const applyPendingStatus = useCallback((realId) => {
+    const pending = pendingStatusUpdates.current[realId]
+    if (!pending) return
+    editMessageInStore(realId, pending)
+    delete pendingStatusUpdates.current[realId]
+  }, [editMessageInStore])
 
   const clearTypingTimer = (userId) => {
     if (typingTimers.current[userId]) {
@@ -210,30 +219,94 @@ export function useChat(roomId) {
       if (msg.roomId === roomId?.toString()) {
         msg = await tryDecrypt(msg, roomId, currentUser?.id?.toString())
         if (tempId) replaceMessage(tempId, msg)
+        // Apply any status updates (delivered/read) that arrived before the
+        // async replaceMessage completed — fixes the "no tick until refresh" bug.
+        applyPendingStatus(msg.id)
       }
       updateLastMessage(msg.roomId, msg)
     }
 
-    const handleMsgDelivered      = ({ messageId, deliveredAt, status }) => {
-      editMessageInStore(messageId, { deliveredAt, status: status || 'delivered' })
+    const handleMsgDelivered = ({ messageId, deliveredAt, status }) => {
+      // If the real message is already in store, update immediately.
+      // Otherwise buffer it — handleMessageSent will flush it after the replace.
+      const inStore = useChatStore.getState().messages.some(m => m.id === messageId)
+      if (inStore) {
+        editMessageInStore(messageId, { deliveredAt, status: status || 'delivered' })
+      } else {
+        pendingStatusUpdates.current[messageId] = {
+          ...(pendingStatusUpdates.current[messageId] || {}),
+          deliveredAt,
+          status: status || 'delivered',
+        }
+      }
     }
-    const handleMsgRead           = ({ messageId, readAt, status }) => {
-      editMessageInStore(messageId, { readAt, status: status || 'read' })
+
+    const handleMsgRead = ({ messageId, messageIds, readAt, status, roomId: evtRoomId }) => {
+      // Build the full list of IDs to update.
+      // Backend sends messageIds (all updated) + messageId (last, for compat).
+      // Fallback: if only roomId arrived (catch branch), mark every sender msg in room.
+      let ids = []
+      if (messageIds?.length) {
+        ids = messageIds
+      } else if (messageId) {
+        ids = [messageId]
+      } else if (evtRoomId) {
+        // roomId-only fallback: mark all our sent messages in that room as read
+        ids = useChatStore.getState().messages
+          .filter(m => (m.roomId === evtRoomId || m.roomId?.toString() === evtRoomId))
+          .map(m => m.id)
+      }
+      if (!ids.length) return
+
+      const patch      = { readAt: readAt || new Date().toISOString(), status: status || 'read' }
+      const storedIds  = ids.filter(id => useChatStore.getState().messages.some(m => m.id === id))
+      const missingIds = ids.filter(id => !storedIds.includes(id))
+
+      if (storedIds.length) {
+        bulkEditMessagesInStore(storedIds, patch)
+      }
+      // Buffer any IDs not yet in store (temp message not yet replaced)
+      missingIds.forEach(id => {
+        pendingStatusUpdates.current[id] = {
+          ...(pendingStatusUpdates.current[id] || {}),
+          ...patch,
+        }
+      })
     }
+
     const handleGroupMsgDelivered = ({ messageId, userId, deliveredAt, status }) => {
-      editMessageInStore(messageId, (msg) => {
-        const deliveredTo    = [...(msg.deliveredTo || []), userId].filter((v, i, a) => a.indexOf(v) === i)
-        const memberStatuses = updateMemberStatus(msg.memberStatuses, userId, { deliveredAt })
-        return { deliveredTo, memberStatuses, status: status || msg.status }
-      })
+      const inStore = useChatStore.getState().messages.some(m => m.id === messageId)
+      if (inStore) {
+        editMessageInStore(messageId, (msg) => {
+          const deliveredTo    = [...(msg.deliveredTo || []), userId].filter((v, i, a) => a.indexOf(v) === i)
+          const memberStatuses = updateMemberStatus(msg.memberStatuses, userId, { deliveredAt })
+          return { deliveredTo, memberStatuses, status: status || msg.status }
+        })
+      } else {
+        pendingStatusUpdates.current[messageId] = {
+          ...(pendingStatusUpdates.current[messageId] || {}),
+          deliveredAt,
+          status: status || 'delivered',
+        }
+      }
     }
-    const handleGroupMsgRead      = ({ messageId, userId, readAt, status }) => {
-      editMessageInStore(messageId, (msg) => {
-        const readBy         = [...(msg.readBy || []), userId].filter((v, i, a) => a.indexOf(v) === i)
-        const deliveredTo    = [...(msg.deliveredTo || []), userId].filter((v, i, a) => a.indexOf(v) === i)
-        const memberStatuses = updateMemberStatus(msg.memberStatuses, userId, { readAt, deliveredAt: msg.deliveredAt })
-        return { readBy, deliveredTo, memberStatuses, status: status || msg.status }
-      })
+
+    const handleGroupMsgRead = ({ messageId, userId, readAt, status }) => {
+      const inStore = useChatStore.getState().messages.some(m => m.id === messageId)
+      if (inStore) {
+        editMessageInStore(messageId, (msg) => {
+          const readBy         = [...(msg.readBy || []), userId].filter((v, i, a) => a.indexOf(v) === i)
+          const deliveredTo    = [...(msg.deliveredTo || []), userId].filter((v, i, a) => a.indexOf(v) === i)
+          const memberStatuses = updateMemberStatus(msg.memberStatuses, userId, { readAt, deliveredAt: msg.deliveredAt })
+          return { readBy, deliveredTo, memberStatuses, status: status || msg.status }
+        })
+      } else {
+        pendingStatusUpdates.current[messageId] = {
+          ...(pendingStatusUpdates.current[messageId] || {}),
+          readAt,
+          status: status || 'read',
+        }
+      }
     }
 
     const handleTypingStart      = ({ userId, userName }) => startTypingAutoExpire(userId, userName || userId)
@@ -271,6 +344,7 @@ export function useChat(roomId) {
     on(MESSAGE_SENT,        handleMessageSent)
     on(MSG_DELIVERED,       handleMsgDelivered)
     on(MSG_READ,            handleMsgRead)
+    on(MESSAGE_READ,        handleMsgRead) // catch-branch fallback (underscore variant)
     on(GROUP_MSG_DELIVERED, handleGroupMsgDelivered)
     on(GROUP_MSG_READ,      handleGroupMsgRead)
     on(TYPING_START,        handleTypingStart)
@@ -294,6 +368,7 @@ export function useChat(roomId) {
       off(MESSAGE_SENT,        handleMessageSent)
       off(MSG_DELIVERED,       handleMsgDelivered)
       off(MSG_READ,            handleMsgRead)
+      off(MESSAGE_READ,        handleMsgRead)
       off(GROUP_MSG_DELIVERED, handleGroupMsgDelivered)
       off(GROUP_MSG_READ,      handleGroupMsgRead)
       off(TYPING_START,        handleTypingStart)
@@ -309,9 +384,10 @@ export function useChat(roomId) {
       off(MESSAGE_BLOCKED,     handleMessageBlocked)
       off(MESSAGE_EDITED,      handleMessageEdited)
       off(MESSAGE_DELETED,     handleMessageDeleted)
+      pendingStatusUpdates.current = {}
       setMessages([])
     }
-  }, [roomId])
+  }, [roomId, applyPendingStatus])
 
   /**
    * Send a message. If the room has an E2E key available, the message is

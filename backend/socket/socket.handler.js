@@ -458,43 +458,56 @@ module.exports = (io) => {
     socket.on('message_read', async ({ roomId } = {}) => {
       if (!roomId) return
       try {
+        console.log(`[READ] ${socket.user.name} opened room ${roomId}`)
         const now  = new Date()
         const room = await Room.findById(roomId).select('isGroup participantIds')
         if (!room || room.isGroup) return
 
-        // Always update DB so messages are marked read for the reader's own view.
-        // Only suppress the real-time 'message-read' event to the sender when
-        // the reader has disabled read receipts.
         const readerUser = await User.findById(socket.user._id).select('privacy')
         const readReceiptsEnabled = readerUser?.privacy?.readReceipts !== false
+        console.log(`[READ] readReceiptsEnabled=${readReceiptsEnabled}`)
 
-        const updated = await Message.updateMany(
-          {
-            roomId,
-            senderId:  { $ne: socket.user._id },
-            readAt:    null,
-            isDeleted: { $ne: true }
-          },
+        const unreadMsgs = await Message.find({
+          roomId,
+          senderId:  { $ne: socket.user._id },
+          readAt:    null,
+          isDeleted: { $ne: true }
+        }).select('_id senderId')
+
+        console.log(`[READ] unreadMsgs count=${unreadMsgs.length}`, unreadMsgs.map(m=>m._id.toString()))
+
+        if (unreadMsgs.length === 0) return
+
+        await Message.updateMany(
+          { _id: { $in: unreadMsgs.map(m => m._id) } },
           { $set: { readAt: now, deliveredAt: now }, $addToSet: { readBy: socket.user._id } }
         )
 
-        // Only notify sender if read receipts are enabled for this user
-        if (updated.modifiedCount > 0 && readReceiptsEnabled) {
-          const lastMsg = await Message.findOne({
-            roomId,
-            senderId: { $ne: socket.user._id },
-            readAt:   now
-          }).sort({ createdAt: -1 })
+        if (!readReceiptsEnabled) return
 
-          socket.to(roomId).emit('message-read', {
+        const bySender = {}
+        for (const msg of unreadMsgs) {
+          const sid = msg.senderId.toString()
+          if (!bySender[sid]) bySender[sid] = []
+          bySender[sid].push(msg._id.toString())
+        }
+
+        const allSockets = await io.fetchSockets()
+        console.log(`[READ] total live sockets=${allSockets.length}, bySender keys=${Object.keys(bySender)}`)
+        for (const [senderId, msgIds] of Object.entries(bySender)) {
+          const senderSockets = allSockets.filter(s => s.user?._id?.toString() === senderId)
+          console.log(`[READ] sender=${senderId} has ${senderSockets.length} socket(s), sending messageIds=`, msgIds)
+          senderSockets.forEach(s => s.emit('message-read', {
             roomId,
-            userId:  socket.user._id.toString(),
-            readAt:  now,
-            messageId: lastMsg?._id?.toString(),
-            status:  'read'
-          })
+            userId:     socket.user._id.toString(),
+            readAt:     now,
+            messageId:  msgIds[msgIds.length - 1],
+            messageIds: msgIds,
+            status:     'read'
+          }))
         }
       } catch (err) {
+        console.error('message_read error:', err)
         socket.to(roomId).emit('message_read', { roomId, userId: socket.user._id.toString() })
       }
     })
