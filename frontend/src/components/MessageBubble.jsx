@@ -77,6 +77,18 @@ function fmtDateTime(ts) {
   })
 }
 
+// ── Disappearing-messages indicator helper ───────────────────────────────────
+// Returns a short human-readable "Disappears in Xh" / "Disappears in Xd" label
+// for a future expiresAt timestamp, or '' if it has already expired.
+function formatExpiry(expiresAt) {
+  const ms = new Date(expiresAt) - Date.now()
+  if (ms <= 0) return ''
+  const hours = Math.floor(ms / 3600000)
+  if (hours < 24) return `Disappears in ${hours}h`
+  const days = Math.floor(hours / 24)
+  return `Disappears in ${days}d`
+}
+
 // ── MessageInfo Modal ────────────────────────────────────────────────────────
 function MessageInfoModal({ messageId, onClose }) {
   const [info,    setInfo]    = useState(null)
@@ -624,6 +636,16 @@ function MessageBubble({ message, isOwn, searchQuery = '', isActiveMatch = false
           })()}
 
           {renderContent()}
+
+          {/* ── Disappearing message indicator ── */}
+          {message.expiresAt && new Date(message.expiresAt) > new Date() && (
+            <div className="message-expiry-hint">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span>{formatExpiry(message.expiresAt)}</span>
+            </div>
+          )}
 
           {/* ── Meta: time + status ticks ── */}
           <span className='bubble-meta'>

@@ -233,18 +233,50 @@ body.dark, body.light {
   --color-segmented-active: var(--color-primary);
 }
 
-/* ── High Contrast ── */
-body.high-contrast {
+/* ── High Contrast: Dark theme ── */
+body.dark.high-contrast {
+  --color-bg:        #000000;
+  --color-surface:   #111111;
+  --color-surface-2: #1a1a1a;
+  --color-surface-3: #0d0d0d;
   --color-text:       #ffffff;
   --color-text-muted: #cccccc;
+  --color-text-dim:   #aaaaaa;
   --color-border:     #666666;
+  --color-primary:    #00e5cc;
+  --color-primary-hover: #00c9b3;
 }
 
-body.high-contrast * {
+body.dark.high-contrast * {
   outline-offset: 2px;
+  border-color: var(--color-border) !important;
 }
 
-body.high-contrast :focus {
+body.dark.high-contrast :focus {
+  outline: 3px solid var(--color-primary) !important;
+}
+
+/* ── High Contrast: Light theme ── */
+body.light.high-contrast {
+  --color-bg:        #ffffff;
+  --color-surface:   #f5f5f5;
+  --color-surface-2: #e8e8e8;
+  --color-surface-3: #dddddd;
+  --color-text:       #000000;
+  --color-text-muted: #1a1a1a;
+  --color-text-dim:   #333333;
+  --color-border:     #555555;
+  --color-primary:    #005fa3;
+  --color-primary-hover: #004d8a;
+  --color-primary-light: rgba(0,95,163,0.12);
+}
+
+body.light.high-contrast * {
+  outline-offset: 2px;
+  border-color: var(--color-border) !important;
+}
+
+body.light.high-contrast :focus {
   outline: 3px solid var(--color-primary) !important;
 }
 

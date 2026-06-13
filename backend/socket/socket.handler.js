@@ -260,6 +260,36 @@ module.exports = (io) => {
       }
     })
 
+    // ── Phase 3: Update accessibility settings via socket ──────────────────────
+    // Validates the payload against an allowlist, writes to DB with dot-notation
+    // $set (same pattern as updateChatSettings), then broadcasts the new values
+    // back to ALL of the user's connected sockets (including the one that sent
+    // the event) via the personal user room so every open tab stays in sync.
+    socket.on('updateAccessibilitySettings', async ({ accessibility }) => {
+      try {
+        if (!accessibility || typeof accessibility !== 'object') return
+
+        const allowed = ['highContrast', 'keyboardShortcuts', 'screenReader']
+
+        const setObj = {}
+        allowed.forEach(k => {
+          if (accessibility[k] !== undefined) setObj[`settings.accessibility.${k}`] = accessibility[k]
+        })
+
+        if (!Object.keys(setObj).length) return
+
+        await User.findByIdAndUpdate(
+          socket.user._id,
+          { $set: setObj },
+          { runValidators: false }
+        )
+
+        io.to(socket.user._id.toString()).emit('accessibilitySettingsUpdated', { accessibility })
+      } catch (e) {
+        console.error('updateAccessibilitySettings error', e)
+      }
+    })
+
     // ── Send Message ─────────────────────────────────────────────────────────
     socket.on('send_message', async ({ content, roomId, type = 'text', fileUrl, fileName, mimeType, fileDuration, uploadSource, tempId, replyTo }) => {
       try {

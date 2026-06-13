@@ -127,6 +127,20 @@ exports.updateSettings = async (req, res, next) => {
       }
     }
 
+    // Phase 3: emit accessibilitySettingsUpdated to the user's personal room so
+    // all other open tabs and devices update their accessibility settings
+    // (high contrast, keyboard shortcuts, screen reader) in real time.
+    const hasAccessibilityChange = body.accessibility && typeof body.accessibility === 'object'
+      && Object.keys(body.accessibility).length > 0;
+    if (hasAccessibilityChange) {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(req.user._id.toString()).emit('accessibilitySettingsUpdated', {
+          accessibility: settingsObj.accessibility,
+        });
+      }
+    }
+
     res.json({ settings: settingsObj });
   } catch (err) { next(err); }
 };

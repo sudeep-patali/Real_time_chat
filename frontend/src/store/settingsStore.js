@@ -63,6 +63,52 @@ function clearNonEssentialStorage() {
   }
 }
 
+// ── Phase 3: Shared accessibility DOM helpers ──────────────────────────────
+// These are exported so AccessibilitySection (and any other consumer) can
+// apply the same DOM side-effects without duplicating logic. They're also
+// used by loadSettings (initial load) and the accessibilitySettingsUpdated
+// socket listener (remote sync) below.
+
+// Toggles the `high-contrast` class on <body>. Combined with `dark`/`light`
+// (set by ThemeContext), CSS selectors `body.dark.high-contrast` and
+// `body.light.high-contrast` in global.css apply the correct palette.
+export function applyHighContrast(value) {
+  if (value) document.body.classList.add('high-contrast')
+  else document.body.classList.remove('high-contrast')
+}
+
+// Adds/removes a skip-navigation link and a hidden aria-live region used for
+// future dynamic announcements when screen-reader support is enabled.
+export function applyScreenReader(value) {
+  // Skip-nav link
+  let skip = document.getElementById('skip-nav-link')
+  if (value && !skip) {
+    skip = document.createElement('a')
+    skip.id = 'skip-nav-link'
+    skip.href = '#main-content'
+    skip.textContent = 'Skip to main content'
+    skip.style.cssText = 'position:fixed;top:-40px;left:0;background:var(--color-primary);color:#fff;padding:8px 16px;z-index:9999;transition:top 0.2s'
+    skip.onfocus = () => { skip.style.top = '0' }
+    skip.onblur  = () => { skip.style.top = '-40px' }
+    document.body.prepend(skip)
+  } else if (!value && skip) {
+    skip.remove()
+  }
+
+  // aria-live region for future dynamic announcements
+  let liveRegion = document.getElementById('aria-live-region')
+  if (value && !liveRegion) {
+    liveRegion = document.createElement('div')
+    liveRegion.id = 'aria-live-region'
+    liveRegion.setAttribute('aria-live', 'polite')
+    liveRegion.setAttribute('aria-atomic', 'true')
+    liveRegion.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap'
+    document.body.appendChild(liveRegion)
+  } else if (!value && liveRegion) {
+    liveRegion.remove()
+  }
+}
+
 export const useSettingsStore = create((set, get) => ({
   settings: defaultSettings,
   loading: false,
@@ -93,25 +139,8 @@ export const useSettingsStore = create((set, get) => ({
       // loaded from DB. Previously these were only applied when the user
       // toggled them in the UI, so they were lost on page refresh.
       const acc = merged.accessibility || {}
-      if (acc.highContrast) {
-        document.body.classList.add('high-contrast')
-      } else {
-        document.body.classList.remove('high-contrast')
-      }
-      if (acc.screenReader) {
-        if (!document.getElementById('skip-nav-link')) {
-          const skip = document.createElement('a')
-          skip.id = 'skip-nav-link'
-          skip.href = '#main-content'
-          skip.textContent = 'Skip to main content'
-          skip.style.cssText = 'position:fixed;top:-40px;left:0;background:var(--color-primary);color:#fff;padding:8px 16px;z-index:9999;transition:top 0.2s'
-          skip.onfocus = () => { skip.style.top = '0' }
-          skip.onblur  = () => { skip.style.top = '-40px' }
-          document.body.prepend(skip)
-        }
-      } else {
-        document.getElementById('skip-nav-link')?.remove()
-      }
+      applyHighContrast(!!acc.highContrast)
+      applyScreenReader(!!acc.screenReader)
     } catch (e) {
       // Use defaults silently
     } finally {
@@ -160,8 +189,10 @@ export const useSettingsStore = create((set, get) => ({
   // ── Phase 1: Real-time socket sync ────────────────────────────────────────
   // Call this once from useGlobalSocket (or wherever the raw socket is available)
   // after the socket connects. Registers listeners for:
-  //   • chatSettingsUpdated — another tab/device changed chat settings; merge them in.
-  //   • cacheCleared        — another tab/device cleared the cache; do the same here.
+  //   • chatSettingsUpdated         — another tab/device changed chat settings; merge them in.
+  //   • cacheCleared                — another tab/device cleared the cache; do the same here.
+  //   • accessibilitySettingsUpdated — another tab/device changed accessibility
+  //     settings (Phase 3); merge them in and re-apply DOM side-effects.
   //
   // Always calls socket.off before socket.on to prevent duplicate listeners if
   // the function is called more than once (e.g. on reconnect).
@@ -192,5 +223,30 @@ export const useSettingsStore = create((set, get) => ({
 
     socket.off('cacheCleared', handleCacheCleared)
     socket.on('cacheCleared',  handleCacheCleared)
+
+    // ── accessibilitySettingsUpdated (Phase 3) ────────────────────────────────
+    // Another tab/device toggled an accessibility setting (high contrast,
+    // keyboard shortcuts, screen reader). Merge the change into the store and
+    // re-apply the relevant DOM side-effects so this tab updates instantly,
+    // with no page refresh required.
+    const handleAccessibilitySettingsUpdated = (data) => {
+      if (!data?.accessibility) return
+      set(state => ({
+        settings: {
+          ...state.settings,
+          accessibility: { ...state.settings.accessibility, ...data.accessibility },
+        },
+      }))
+
+      if (data.accessibility.highContrast !== undefined) {
+        applyHighContrast(!!data.accessibility.highContrast)
+      }
+      if (data.accessibility.screenReader !== undefined) {
+        applyScreenReader(!!data.accessibility.screenReader)
+      }
+    }
+
+    socket.off('accessibilitySettingsUpdated', handleAccessibilitySettingsUpdated)
+    socket.on('accessibilitySettingsUpdated',  handleAccessibilitySettingsUpdated)
   },
 }))

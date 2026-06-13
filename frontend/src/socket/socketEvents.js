@@ -75,3 +75,9 @@ export const MESSAGE_EXPIRED       = 'message:expired'
 export const DEVICE_LIST_UPDATED = 'deviceListUpdated'
 
 export const FORCE_LOGOUT        = 'forceLogout'
+
+// ── Phase 3: Accessibility settings sync ──────────────────────────────────────
+export const ACCESSIBILITY_SETTINGS_UPDATED  = 'accessibilitySettingsUpdated'
+
+// client → server: update accessibility settings via socket (alternative to HTTP PUT)
+export const UPDATE_ACCESSIBILITY_SETTINGS   = 'updateAccessibilitySettings'

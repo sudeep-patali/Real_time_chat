@@ -21,12 +21,12 @@ export function ThemeProvider({ children }) {
   })
 
   const applyTheme = (t) => {
-    if (t === 'system') {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      document.body.className = prefersDark ? 'dark' : 'light'
-    } else {
-      document.body.className = t
-    }
+   
+    const hasHighContrast = document.body.classList.contains('high-contrast')
+    const resolved = t === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : t
+    document.body.className = hasHighContrast ? `${resolved} high-contrast` : resolved
   }
 
   useEffect(() => {
