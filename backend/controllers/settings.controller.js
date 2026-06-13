@@ -270,17 +270,92 @@ exports.getSessions = async (req, res, next) => {
 };
 
 // DELETE /api/users/me/sessions/:id
+//
+// Phase 2: After deleting the DB record, emits two socket events to the
+// user's personal room:
+//   • 'deviceListUpdated' — all tabs reload the device list (real-time UI sync)
+//   • 'forceLogout'       — the specific tab/device that owns this session
+//     detects its own sessionId and immediately clears auth state + redirects
+//     to /login.
 exports.deleteSession = async (req, res, next) => {
   try {
+    const io = req.io || req.app.get('io');
+    const userId = req.user._id.toString();
+
+    // Fetch the session first so we have the sessionId to send in the event
+    const session = await UserSession.findOne({ _id: req.params.id, userId: req.user._id });
+
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
+    const { sessionId } = session;
+
     await UserSession.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+
+    if (io) {
+      // Tell all tabs to refresh the device list
+      io.to(userId).emit('deviceListUpdated', {});
+
+      // Tell the specific session to force-logout.
+      // The client matches on sessionId (stored in sessionStorage after login).
+      io.to(userId).emit('forceLogout', {
+        targetAll: false,
+        sessionId,
+      });
+    }
+
     res.json({ message: 'Session revoked' });
   } catch (err) { next(err); }
 };
 
+// DELETE /api/users/me/sessions/:id/force
+//
+// Phase 2: Explicit force-logout endpoint.  Logic is identical to deleteSession
+// but lives on a dedicated route to make the intent unambiguous.
+exports.logoutDevice = async (req, res, next) => {
+  try {
+    const io = req.io || req.app.get('io');
+    const userId = req.user._id.toString();
+
+    const session = await UserSession.findOne({ _id: req.params.id, userId: req.user._id });
+
+    if (!session) {
+      return res.status(404).json({ message: 'Session not found' });
+    }
+
+    const { sessionId } = session;
+
+    await UserSession.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+
+    if (io) {
+      io.to(userId).emit('deviceListUpdated', {});
+      io.to(userId).emit('forceLogout', {
+        targetAll: false,
+        sessionId,
+      });
+    }
+
+    res.json({ message: 'Device logged out' });
+  } catch (err) { next(err); }
+};
+
 // DELETE /api/users/me/sessions (all)
+//
+// Phase 2: After deleting all sessions, emits 'forceLogout' with targetAll: true
+// so every open tab — including the one that clicked the button — is
+// immediately redirected to /login.
 exports.deleteAllSessions = async (req, res, next) => {
   try {
+    const io = req.io || req.app.get('io');
+    const userId = req.user._id.toString();
+
     await UserSession.deleteMany({ userId: req.user._id });
+
+    if (io) {
+      io.to(userId).emit('forceLogout', { targetAll: true });
+    }
+
     res.json({ message: 'All sessions revoked' });
   } catch (err) { next(err); }
 };
@@ -298,6 +373,9 @@ exports.getSecurityLogs = async (req, res, next) => {
 // DELETE /api/auth/sessions — logout all devices
 exports.logoutAllDevices = async (req, res, next) => {
   try {
+    const io = req.io || req.app.get('io');
+    const userId = req.user._id.toString();
+
     await UserSession.deleteMany({ userId: req.user._id });
 
     const ip = req.ip || req.connection?.remoteAddress || '';
@@ -305,6 +383,10 @@ exports.logoutAllDevices = async (req, res, next) => {
     await SecurityLog.create({
       userId: req.user._id, action: 'logout', detail: 'Logged out all devices', ip, device: parseUA(ua)
     });
+
+    if (io) {
+      io.to(userId).emit('forceLogout', { targetAll: true });
+    }
 
     res.json({ message: 'Logged out from all devices' });
   } catch (err) { next(err); }

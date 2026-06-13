@@ -1,4 +1,4 @@
-// Outbound (client → server)
+// ── Outbound (client → server) ────────────────────────────────────────────────
 export const JOIN_ROOM          = 'join_room'
 export const LEAVE_ROOM         = 'leave_room'
 export const SEND_MESSAGE       = 'send_message'
@@ -33,7 +33,7 @@ export const GROUP_MESSAGE_DELIVERED = 'group-message-delivered'
 // Message Info response
 export const MESSAGE_INFO_RES   = 'message:info-response'
 
-// Inbound (server → client)
+// ── Inbound (server → client) ─────────────────────────────────────────────────
 export const RECEIVE_MESSAGE    = 'receive_message'
 export const MESSAGE_SENT       = 'message_sent'
 export const MESSAGE_BLOCKED    = 'message_blocked'
@@ -63,15 +63,15 @@ export const USER_JOINED_GROUP         = 'user-joined-group'
 // Privacy events
 export const PRIVACY_UPDATED = 'privacy_updated'
 
-// ── Phase 1: Chat Settings real-time sync ────────────────────────────────────
-// server → client (personal room): chat settings were updated on another tab/device
 export const CHAT_SETTINGS_UPDATED = 'chatSettingsUpdated'
 
 // client → server: update chat settings via socket (alternative to HTTP PUT)
 export const UPDATE_CHAT_SETTINGS  = 'updateChatSettings'
 
-// server → client (personal room): cache was cleared on another tab/device
 export const CACHE_CLEARED         = 'cacheCleared'
 
-// server → room: a message's expiresAt has passed and it was soft-deleted
 export const MESSAGE_EXPIRED       = 'message:expired'
+
+export const DEVICE_LIST_UPDATED = 'deviceListUpdated'
+
+export const FORCE_LOGOUT        = 'forceLogout'

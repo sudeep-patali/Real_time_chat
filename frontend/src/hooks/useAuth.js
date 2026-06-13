@@ -1,16 +1,34 @@
-/**
- * useAuth.js  —  frontend/src/hooks/useAuth.js
- *
- * CHANGE: loginWithGoogle() now calls authService.firebaseAuth() instead
- *         of authService.googleAuth().  The hook interface is identical so
- *         no other component needs to change.
- */
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import * as authService from '../services/authService'
 
+
+function generateDeviceId() {
+  try {
+    let id = sessionStorage.getItem('deviceId')
+    if (!id) {
+      id = btoa(
+        [
+          navigator.userAgent,
+          screen.width,
+          screen.height,
+          navigator.language,
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ].join('|')
+      )
+        .replace(/=/g, '')   // strip base64 padding
+        .slice(0, 64)        // keep to a reasonable column width in the DB
+      sessionStorage.setItem('deviceId', id)
+    }
+    return id
+  } catch {
+    return ''
+  }
+}
+
+// ── Hook ──────────────────────────────────────────────────────────────────────
 export function useAuth() {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
@@ -20,11 +38,15 @@ export function useAuth() {
   const navigate  = useNavigate()
 
   // ── Email + password login ──────────────────────────────────────────────────
+  //
+  // Phase 2: generates (or reads from sessionStorage) a deviceId and passes
+  // it to authService.login() so the backend can deduplicate UserSession rows.
   const login = async (email, password) => {
     setLoading(true)
     setError(null)
     try {
-      const res = await authService.login(email, password)
+      const deviceId = generateDeviceId()
+      const res = await authService.login(email, password, deviceId)
       authStore.login(res.data.user, res.data.token)
       window.dispatchEvent(new CustomEvent('auth:user-changed'))
       navigate('/')
@@ -93,13 +115,16 @@ export function useAuth() {
   }
 
   // ── Firebase Sign-In ────────────────────────────────────────────────────────
-  // The component (GoogleSignInButton) handles the Firebase popup and returns
-  // an ID token.  This hook exchanges that token with our backend.
+  //
+  // Phase 2: generates (or reads from sessionStorage) a deviceId and passes
+  // it to authService.firebaseAuth() so Firebase logins also benefit from
+  // session deduplication on the same browser.
   const loginWithGoogle = async (idToken) => {
     setLoading(true)
     setError(null)
     try {
-      const res = await authService.firebaseAuth(idToken)   // ← changed
+      const deviceId = generateDeviceId()
+      const res = await authService.firebaseAuth(idToken, deviceId)
       authStore.login(res.data.user, res.data.token)
       window.dispatchEvent(new CustomEvent('auth:user-changed'))
       navigate('/')

@@ -10,11 +10,11 @@
  *   logout            POST /auth/logout
  *   refreshToken      POST /auth/refresh
  *
- * CHANGE from previous version:
- *   • Removed: google-auth-library / OAuth2Client / GOOGLE_CLIENT_ID
- *   • Added:   firebase-admin token verification via ../config/firebase
- *   • The client now sends a Firebase ID token (works for Google, Email,
- *     Phone, or any provider enabled in your Firebase project).
+ * Phase 2 change in issueSession:
+ *   • Reads deviceId from req.body and uses it to upsert (deduplicate) the
+ *     UserSession record so the same browser/device never accumulates stale rows.
+ *   • Populates the new browser, os, isActive, and sessionId fields.
+ *   • Falls back to UserSession.create() for clients that don't send deviceId.
  */
 
 const bcrypt = require('bcryptjs');
@@ -36,13 +36,17 @@ const { sendOtpEmail } = require('../utils/email');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const OTP_EXPIRY_MINS         = 10;
-const OTP_MAX_ATTEMPTS        = 5;
+const OTP_EXPIRY_MINS          = 10;
+const OTP_MAX_ATTEMPTS         = 5;
 const OTP_RESEND_COOLDOWN_SECS = 60;
-const OTP_MAX_RESENDS         = 5;
+const OTP_MAX_RESENDS          = 5;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * parseUA — returns a human-readable string like "Chrome on Windows".
+ * Kept for audit log compatibility (existing callers pass the result directly).
+ */
 function parseUA(ua = '') {
   let browser = 'Unknown Browser', os = 'Unknown OS';
   if (/Chrome/.test(ua) && !/Chromium|Edge|OPR/.test(ua)) browser = 'Chrome';
@@ -55,6 +59,25 @@ function parseUA(ua = '') {
   else if (/Android/.test(ua))          os = 'Android';
   else if (/iPhone|iPad|iPod/.test(ua)) os = 'iOS';
   return `${browser} on ${os}`;
+}
+
+/**
+ * parseBrowserOS — returns { browser, os } as separate strings.
+ * Used by issueSession to populate the new UserSession fields.
+ */
+function parseBrowserOS(ua = '') {
+  let browser = 'Unknown', os = 'Unknown';
+  if (/Chrome/.test(ua) && !/Chromium|Edge|OPR/.test(ua)) browser = 'Chrome';
+  else if (/Firefox/.test(ua))                             browser = 'Firefox';
+  else if (/Safari/.test(ua) && !/Chrome/.test(ua))        browser = 'Safari';
+  else if (/Edge/.test(ua))                                browser = 'Edge';
+  else if (/OPR|Opera/.test(ua))                           browser = 'Opera';
+  if (/Windows/.test(ua))               os = 'Windows';
+  else if (/Macintosh|Mac OS/.test(ua)) os = 'macOS';
+  else if (/Linux/.test(ua))            os = 'Linux';
+  else if (/Android/.test(ua))          os = 'Android';
+  else if (/iPhone|iPad|iPod/.test(ua)) os = 'iOS';
+  return { browser, os };
 }
 
 function refreshExpireDate() {
@@ -81,6 +104,17 @@ function generateOtp() {
   return String(crypto.randomInt(100000, 999999));
 }
 
+// ── issueSession ──────────────────────────────────────────────────────────────
+//
+// Phase 2: reads deviceId from req.body.  When present:
+//   • findOneAndUpdate with { upsert: true } keeps exactly one UserSession row
+//     per (userId, deviceId) pair — no duplicate entries accumulate on repeat
+//     logins from the same browser/device.
+//   • A fresh sessionId is generated each time so the client can match
+//     incoming forceLogout socket events to itself.
+// When deviceId is absent (older clients / server-side calls):
+//   • Falls back to UserSession.create() — existing behaviour unchanged.
+//
 async function issueSession(res, user, req) {
   const accessToken  = generateAccessToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
@@ -97,12 +131,54 @@ async function issueSession(res, user, req) {
 
   setRefreshCookie(res, refreshToken);
 
-  const ip     = req.ip || req.connection?.remoteAddress || '';
-  const ua     = req.headers['user-agent'] || '';
-  const device = parseUA(ua);
+  const ip       = req.ip || req.connection?.remoteAddress || '';
+  const ua       = req.headers['user-agent'] || '';
+  const device   = parseUA(ua);                     // "Chrome on Windows"
+  const { browser, os } = parseBrowserOS(ua);       // separate fields for UI
+  const sessionId = crypto.randomBytes(16).toString('hex');
+
+  // Read the stable device fingerprint sent by the frontend (generated from
+  // UA + screen dimensions + locale in sessionStorage).
+  const deviceId = req.body?.deviceId || '';
 
   try {
-    await UserSession.create({ userId: user._id, token: accessToken, device, ip, userAgent: ua });
+    if (deviceId) {
+      // ── Deduplicated upsert ─────────────────────────────────────────────
+      // If this (userId, deviceId) pair already has a row, update it in place
+      // (refreshing the token, IP, lastActive, etc.) so the list stays clean.
+      // If no row exists yet, setDefaultsOnInsert creates one.
+      await UserSession.findOneAndUpdate(
+        { userId: user._id, deviceId },
+        {
+          token:      accessToken,
+          device,
+          ip,
+          userAgent:  ua,
+          lastActive: new Date(),
+          isActive:   true,
+          browser,
+          os,
+          sessionId,
+          createdAt:  new Date(),   // only meaningful on insert; harmless on update
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+    } else {
+      // ── Legacy path: no deviceId provided ──────────────────────────────
+      await UserSession.create({
+        userId:    user._id,
+        token:     accessToken,
+        device,
+        ip,
+        userAgent: ua,
+        lastActive: new Date(),
+        isActive:   true,
+        browser,
+        os,
+        sessionId,
+      });
+    }
+
     await logAudit(user._id, 'login', { ip, device, severity: 'info' });
   } catch (_) { /* non-fatal */ }
 
@@ -234,7 +310,7 @@ exports.verifySignupOtp = async (req, res, next) => {
       role:          'member',
       isOnline:      false,
       lastSeen:      new Date(),
-      firebaseUid:   null,   // ← renamed from googleId; populated on first Firebase sign-in
+      firebaseUid:   null,
       publicKey:     null,
       statusValue:   'available',
       customStatus:  '',
@@ -315,7 +391,7 @@ exports.resendSignupOtp = async (req, res, next) => {
  * enabled in your Firebase project (Google, Email link, Phone, etc.).
  *
  * POST /api/auth/firebase
- * Body: { idToken }
+ * Body: { idToken, deviceId? }
  */
 exports.firebaseAuthHandler = async (req, res, next) => {
   try {
@@ -362,6 +438,7 @@ exports.firebaseAuthHandler = async (req, res, next) => {
       }
     }
 
+    // deviceId is forwarded via req.body and picked up inside issueSession
     const session = await issueSession(res, user, req);
 
     res.status(isNew ? 201 : 200).json({
@@ -392,6 +469,7 @@ exports.login = async (req, res, next) => {
       return res.status(400).json({ message: 'This account uses Firebase Sign-In. Please continue with that method.' });
     }
 
+    // deviceId (if present in req.body) is forwarded into issueSession automatically
     const session = await issueSession(res, user, req);
     res.json(session);
   } catch (err) { next(err); }

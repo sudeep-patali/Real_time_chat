@@ -1,14 +1,14 @@
-/**
- * authService.js  —  frontend/src/services/authService.js
- *
- * CHANGE: googleAuth()  →  firebaseAuth()   (hits /auth/firebase instead of /auth/google)
- */
 
 import api from '../config/api.config'
 
 // ── Email + Password login ────────────────────────────────────────────────────
-export const login = (email, password) =>
-  api.post('/auth/login', { email, password })
+// deviceId defaults to '' so existing callers that don't pass it still work.
+export const login = (email, password, deviceId = '') =>
+  api.post('/auth/login', {
+    email,
+    password,
+    ...(deviceId ? { deviceId } : {}),
+  })
 
 // ── Email OTP signup flow ─────────────────────────────────────────────────────
 
@@ -24,11 +24,12 @@ export const verifySignupOtp = (email, otp) =>
 export const resendSignupOtp = (email) =>
   api.post('/auth/signup/resend-otp', { email })
 
-// ── Firebase Auth ─────────────────────────────────────────────────────────────
 
-/** Exchange a Firebase ID token for a session */
-export const firebaseAuth = (idToken) =>
-  api.post('/auth/firebase', { idToken })
+export const firebaseAuth = (idToken, deviceId = '') =>
+  api.post('/auth/firebase', {
+    idToken,
+    ...(deviceId ? { deviceId } : {}),
+  })
 
 // ── Session ───────────────────────────────────────────────────────────────────
 export const logout = () =>
