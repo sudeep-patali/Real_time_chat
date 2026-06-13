@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Search, MoreVertical, Ban, ChevronUp, ChevronDown, X, ArrowLeft } from 'lucide-react'
+import { Search, MoreVertical, Ban, ChevronUp, ChevronDown, X, ArrowLeft, Trash2, ShieldOff, Shield } from 'lucide-react'
 import { useChat } from '../hooks/useChat'
 import { useAuth } from '../hooks/useAuth'
 import { useChatStore } from '../store/chatStore'
@@ -34,6 +34,23 @@ function Chat() {
 
   // ── Reply state ───────────────────────────────────────────────
   const [replyTo, setReplyTo] = useState(null)
+
+  // ── Header "more" menu (clear chat / block) ─────────────────────
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [blocking, setBlocking] = useState(false)
+  const headerMenuRef = useRef(null)
+
+  useEffect(() => {
+    if (!showHeaderMenu) return
+    const handleClickOutside = (e) => {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target)) {
+        setShowHeaderMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showHeaderMenu])
 
   // ── Scroll to original message when reply quote is clicked ───
   const handleScrollToMessage = (messageId) => {
@@ -288,6 +305,44 @@ function Chat() {
     if (uid) navigate(`/user/${uid}`)
   }
 
+  // ── Clear chat ───────────────────────────────────────────────
+  const handleClearChat = async () => {
+    setShowHeaderMenu(false)
+    if (!roomId) return
+    if (!window.confirm('Clear this chat? This will delete all messages for you.')) return
+    setClearing(true)
+    try {
+      await roomService.clearChat(roomId)
+      useChatStore.getState().setMessages([])
+      window.location.reload()
+    } catch (err) {
+      console.error('Failed to clear chat', err)
+    } finally {
+      setClearing(false)
+    }
+  }
+
+  // ── Block / unblock user ───────────────────────────────────────
+  const handleToggleBlock = async () => {
+    setShowHeaderMenu(false)
+    if (!otherUserId) return
+    const action = blockStatus.iBlockedThem ? 'unblock' : 'block'
+    if (!window.confirm(
+      blockStatus.iBlockedThem
+        ? `Unblock ${displayName}? They will be able to message you again.`
+        : `Block ${displayName}? They will no longer be able to send you messages.`
+    )) return
+    setBlocking(true)
+    try {
+      await userService.blockUser(otherUserId)
+      setBlockStatus(s => ({ ...s, iBlockedThem: !s.iBlockedThem }))
+    } catch (err) {
+      console.error(`Failed to ${action} user`, err)
+    } finally {
+      setBlocking(false)
+    }
+  }
+
   // ── Mobile back — return to chat list, preserving browser history ──
   const handleMobileBack = (e) => {
     e.stopPropagation()
@@ -375,13 +430,32 @@ function Chat() {
               >
                 <Search size={18} />
               </button>
-              <button
-                className='chat-header-icon'
-                title='More'
-                onClick={e => e.stopPropagation()}
-              >
-                <MoreVertical size={18} />
-              </button>
+              <div ref={headerMenuRef} style={{ position: 'relative' }}>
+                <button
+                  className='chat-header-icon'
+                  title='More'
+                  onClick={e => { e.stopPropagation(); setShowHeaderMenu(v => !v) }}
+                >
+                  <MoreVertical size={18} />
+                </button>
+                {showHeaderMenu && (
+                  <div className='dropdown-menu' style={{ position: 'absolute', top: '100%', right: 0, zIndex: 50 }}>
+                    <button className='dropdown-item' onClick={e => { e.stopPropagation(); handleClearChat() }} disabled={clearing}>
+                      <Trash2 size={16} />
+                      <span>Clear chat</span>
+                    </button>
+                    {!room?.isGroup && otherUserId && (
+                      <>
+                        <div className='dropdown-separator' />
+                        <button className='dropdown-item danger' onClick={e => { e.stopPropagation(); handleToggleBlock() }} disabled={blocking}>
+                          {blockStatus.iBlockedThem ? <Shield size={16} /> : <ShieldOff size={16} />}
+                          <span>{blockStatus.iBlockedThem ? `Unblock ${displayName}` : `Block ${displayName}`}</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

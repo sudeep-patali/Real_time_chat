@@ -9,7 +9,9 @@ import Navbar from '../components/Navbar'
 import Sidebar from '../components/Sidebar'
 import ChatBox from '../components/ChatBox'
 import MessageInput from '../components/MessageInput'
-import { Search, MoreVertical, ArrowLeft } from 'lucide-react'
+import { Search, MoreVertical, ArrowLeft, Trash2, LogOut } from 'lucide-react'
+import * as roomService from '../services/roomService'
+import * as groupService from '../services/groupService'
 import '../styles/chat.css'
 
 function GroupChat() {
@@ -27,6 +29,73 @@ function GroupChat() {
   const searchInputRef = useRef(null)
   const [replyTo, setReplyTo] = useState(null)
 
+  // ── Header "more" menu (clear chat / leave group) ───────────────
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [leaving, setLeaving]   = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const headerMenuRef = useRef(null)
+
+  useEffect(() => {
+    if (!showHeaderMenu) return
+    const handleClickOutside = (e) => {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target)) {
+        setShowHeaderMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showHeaderMenu])
+
+  const handleClearChat = async () => {
+    setShowHeaderMenu(false)
+    if (!roomId) return
+    if (!window.confirm('Clear this chat? This will delete all messages for you.')) return
+    setClearing(true)
+    try {
+      await roomService.clearChat(roomId)
+      useChatStore.getState().setMessages([])
+      window.location.reload()
+    } catch (err) {
+      console.error('Failed to clear chat', err)
+    } finally {
+      setClearing(false)
+    }
+  }
+
+  const handleLeaveGroup = async () => {
+    setShowHeaderMenu(false)
+    if (!roomId) return
+    if (!window.confirm(`Leave "${groupName}"? You will no longer receive messages from this group.`)) return
+    setLeaving(true)
+    try {
+      await roomService.leaveRoom(roomId)
+      useChatStore.getState().removeRoom(roomId)
+      navigate('/', { replace: true })
+    } catch (err) {
+      console.error('Failed to leave group', err)
+    } finally {
+      setLeaving(false)
+    }
+  }
+
+  const handleDeleteGroup = async () => {
+    setShowHeaderMenu(false)
+    if (!roomId) return
+    if (!window.confirm(`Permanently delete "${groupName}" and all its messages for everyone? This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      await groupService.deleteGroup(roomId)
+      useChatStore.getState().removeRoom(roomId)
+      navigate('/', { replace: true })
+    } catch (err) {
+      console.error('Failed to delete group', err)
+      alert(err.response?.data?.message || 'Failed to delete group.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const handleScrollToMessage = (messageId) => {
     const el = document.querySelector(`[data-message-id="${messageId}"]`)
     if (!el) return
@@ -39,6 +108,15 @@ function GroupChat() {
 
   // Get real group data from store
   const room      = rooms.find(r => (r.id || r._id) === roomId)
+
+  // If the group no longer exists in our room list (deleted, or we left/were
+  // removed and the store has already updated), bounce back to the chat list.
+  useEffect(() => {
+    if (rooms.length > 0 && !room) {
+      navigate('/', { replace: true })
+    }
+  }, [rooms, room, navigate])
+
   const groupName = room?.groupName || room?.name || 'Group'
   const members   = room?.participantIds || []
 
@@ -48,6 +126,12 @@ function GroupChat() {
     .join(', ')
 
   const initials = groupName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+
+  // isAdmin: true if current user is the creator OR in adminIds
+  const currentUserIdStr = currentUser?.id?.toString()
+  const isAdmin = (room?.adminIds || []).map(id => id?.toString?.() || String(id)).includes(currentUserIdStr) ||
+                  room?.createdBy?._id?.toString() === currentUserIdStr ||
+                  room?.createdBy?.toString() === currentUserIdStr
   const groupAvatar = room?.groupAvatar || room?.avatarUrl || null
 
   // ── Search helpers ──
@@ -159,13 +243,34 @@ function GroupChat() {
               >
                 <Search size={18} />
               </button>
-              <button
-                className="chat-header-icon"
-                title="More"
-                onClick={e => e.stopPropagation()}
-              >
-                <MoreVertical size={18} />
-              </button>
+              <div ref={headerMenuRef} style={{ position: 'relative' }}>
+                <button
+                  className="chat-header-icon"
+                  title="More"
+                  onClick={e => { e.stopPropagation(); setShowHeaderMenu(v => !v) }}
+                >
+                  <MoreVertical size={18} />
+                </button>
+                {showHeaderMenu && (
+                  <div className='dropdown-menu' style={{ position: 'absolute', top: '100%', right: 0, zIndex: 50 }}>
+                    <button className='dropdown-item' onClick={e => { e.stopPropagation(); handleClearChat() }} disabled={clearing}>
+                      <Trash2 size={16} />
+                      <span>Clear chat</span>
+                    </button>
+                    <div className='dropdown-separator' />
+                    <button className='dropdown-item danger' onClick={e => { e.stopPropagation(); handleLeaveGroup() }} disabled={leaving}>
+                      <LogOut size={16} />
+                      <span>Leave group</span>
+                    </button>
+                    {isAdmin && (
+                      <button className='dropdown-item danger' onClick={e => { e.stopPropagation(); handleDeleteGroup() }} disabled={deleting}>
+                        <Trash2 size={16} />
+                        <span>Delete group</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
